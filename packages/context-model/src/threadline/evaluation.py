@@ -102,7 +102,7 @@ async def run_phase1_evaluation(*, database_url: str, repository_path: Path) -> 
         )
         initial_version = snapshot.repository_version
         handoff = await read_agent_handoff(
-            create_mcp_server(store, scope),
+            create_mcp_server(store, scope, DEMO_TASK_ID),
             task_id=DEMO_TASK_ID,
             branch=initial_version.branch,
             commit_sha=initial_version.commit_sha,

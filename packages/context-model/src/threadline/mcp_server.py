@@ -85,8 +85,12 @@ def _version_warning(
     return None
 
 
-def create_mcp_server(store: ThreadlineStore, scope: ServiceScope) -> MCPServer:
-    """Bind tools to one trusted local scope; callers cannot select a tenant or workspace."""
+def create_mcp_server(
+    store: ThreadlineStore,
+    scope: ServiceScope,
+    active_task_id: UUID,
+) -> MCPServer:
+    """Bind tools to one trusted local scope and task; callers cannot change either."""
 
     server = MCPServer(
         "Threadline",
@@ -99,6 +103,8 @@ def create_mcp_server(store: ThreadlineStore, scope: ServiceScope) -> MCPServer:
     )
 
     def load(task_id: UUID) -> tuple[ContextSnapshot, dict[str, Any]]:
+        if task_id != active_task_id:
+            raise LookupError("task is outside the MCP server's authorized scope")
         snapshot = store.load_snapshot(
             tenant_id=scope.tenant_id,
             workspace_id=scope.workspace_id,
@@ -110,6 +116,38 @@ def create_mcp_server(store: ThreadlineStore, scope: ServiceScope) -> MCPServer:
             task_id=task_id,
         )
         return snapshot, content
+
+    @server.tool(annotations=READ_ONLY, structured_output=True)
+    def get_workspace_status() -> dict[str, Any]:
+        """Discover the server-bound task and exact repository version before using other tools."""
+
+        snapshot, content = load(active_task_id)
+        handoff_version = handoff_repository_version(content)
+        is_stale = handoff_version != snapshot.repository_version
+        return _envelope(
+            snapshot,
+            content,
+            status=(
+                "stale"
+                if is_stale
+                else (
+                    "partial"
+                    if content.get("unknowns") or content.get("contradictions")
+                    else "ok"
+                )
+            ),
+            data={
+                "task_id": str(active_task_id),
+                "objective": snapshot.task.objective,
+                "next_action": content["next_action"],
+                "handoff_current": not is_stale,
+            },
+            warnings=(
+                ["The latest handoff is stale and must be recompiled before continuation."]
+                if is_stale
+                else []
+            ),
+        )
 
     @server.tool(annotations=READ_ONLY, structured_output=True)
     def get_task_context(task_id: UUID, branch: str, commit_sha: str) -> dict[str, Any]:

@@ -39,12 +39,13 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         repository_id=DEMO_REPOSITORY_ID,
     )
 
-    async with Client(create_mcp_server(store, scope)) as client:
+    async with Client(create_mcp_server(store, scope, DEMO_TASK_ID)) as client:
         discovered = await client.list_tools()
         assert {tool.name for tool in discovered.tools} == {
             "explain_context_selection",
             "get_evidence",
             "get_task_context",
+            "get_workspace_status",
             "list_stale_context",
             "trace_decision",
         }
@@ -52,6 +53,22 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
             tool.annotations and tool.annotations.read_only_hint for tool in discovered.tools
         )
         assert all("tenant_id" not in tool.input_schema["properties"] for tool in discovered.tools)
+
+        workspace_result = await client.call_tool("get_workspace_status", {})
+        workspace = workspace_result.structured_content
+        assert workspace["status"] == "partial"
+        assert workspace["data"]["task_id"] == str(DEMO_TASK_ID)
+        assert workspace["repository"]["commit"] == version.commit_sha
+
+        foreign_task_result = await client.call_tool(
+            "get_task_context",
+            {
+                "task_id": str(uuid4()),
+                "branch": version.branch,
+                "commit_sha": version.commit_sha,
+            },
+        )
+        assert foreign_task_result.is_error is True
 
         context_result = await client.call_tool(
             "get_task_context",
@@ -216,7 +233,7 @@ async def test_mcp_scope_fails_closed_without_authorized_task(tmp_path: Path) ->
         repository_id=DEMO_REPOSITORY_ID,
     )
 
-    async with Client(create_mcp_server(store, foreign_scope)) as client:
+    async with Client(create_mcp_server(store, foreign_scope, DEMO_TASK_ID)) as client:
         result = await client.call_tool(
             "get_task_context",
             {

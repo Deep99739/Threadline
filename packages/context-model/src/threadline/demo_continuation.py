@@ -223,7 +223,7 @@ async def run_agent_b_continuation(
         task_id=DEMO_TASK_ID,
     )
     initial = initial_snapshot.repository_version
-    server = create_mcp_server(store, scope)
+    server = create_mcp_server(store, scope, DEMO_TASK_ID)
     handoff = await read_agent_handoff(
         server,
         task_id=DEMO_TASK_ID,
@@ -234,7 +234,7 @@ async def run_agent_b_continuation(
     resulting_commit = _git(repository_path, "rev-parse", "HEAD")
     service.ingest(repository_path=repository_path, scope=scope)
 
-    async with Client(create_mcp_server(store, scope)) as client:
+    async with Client(create_mcp_server(store, scope, DEMO_TASK_ID)) as client:
         stale_result = await client.call_tool(
             "list_stale_context",
             {

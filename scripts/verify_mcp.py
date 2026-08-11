@@ -45,6 +45,7 @@ async def verify() -> None:
             "explain_context_selection",
             "get_evidence",
             "get_task_context",
+            "get_workspace_status",
             "list_stale_context",
             "trace_decision",
         }
@@ -52,6 +53,12 @@ async def verify() -> None:
             raise RuntimeError(f"MCP tool mismatch: {sorted(tool_names)}")
         if not all(tool.annotations and tool.annotations.read_only_hint for tool in tools.tools):
             raise RuntimeError("Every local MCP tool must declare itself read-only")
+
+        workspace_result = await session.call_tool("get_workspace_status", {})
+        if workspace_result.is_error or workspace_result.structured_content is None:
+            raise RuntimeError("MCP workspace bootstrap call failed")
+        if workspace_result.structured_content["data"]["task_id"] != str(DEMO_TASK_ID):
+            raise RuntimeError("MCP workspace bootstrap returned the wrong task")
 
         result = await session.call_tool(
             "get_task_context",
@@ -72,7 +79,7 @@ async def verify() -> None:
             raise RuntimeError("The MCP response is not bound to the active commit")
 
     print(
-        "MCP proof passes: real stdio client, 5 read-only tools, exact commit, "
+        "MCP proof passes: real stdio client, 6 read-only tools, exact commit, "
         "cited partial handoff."
     )
 

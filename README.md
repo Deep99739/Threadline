@@ -30,7 +30,7 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- nine architecture decision records and a threat model;
+- ten architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
 - a strict, committed `threadline.json` contract for arbitrary local repositories;
 - explicit `init` and `sync` commands with refusal of uncommitted context configuration;
@@ -38,7 +38,7 @@ slice:
 - deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
-- five scope-bound, read-only MCP tools proven through a real stdio client;
+- six scope-bound, read-only MCP tools proven through a real stdio client;
 - stale-handoff refusal with source-level invalidation reasons after the branch head moves;
 - an official MCP Agent B client that performs the expected continuation, commits it, and
   re-verifies the resulting repository state;
@@ -143,8 +143,29 @@ with task context only; it does not invent verified claims. Add deterministic ve
 for claims that the repository can actually prove. PostgreSQL remains available through
 `THREADLINE_DATABASE_URL` for shared or deployed environments.
 
+Print reviewable project profiles for local coding clients:
+
+```bash
+/path/to/threadline/.venv/bin/threadline clients .
+```
+
+The command does not modify editor or user settings. It returns project-scoped configurations for
+[Codex](https://developers.openai.com/codex/mcp),
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code/mcp),
+[Cursor](https://docs.cursor.com/context/model-context-protocol),
+[VS Code](https://code.visualstudio.com/docs/agent-customization/mcp-servers), and
+[Antigravity](https://antigravity.google/docs/mcp). Merge only the profile you intend to trust.
+Codex desktop, CLI, and its IDE extension share Codex MCP configuration on the same host; Cursor's
+project profile is used by both its IDE and CLI. The generated server command is exercised through
+the official MCP client in Threadline's test suite. Final trust acceptance still happens inside the
+chosen proprietary client.
+
+Every client can call `get_workspace_status` first to discover the bound task, branch, commit, and
+handoff freshness. The remaining tools require that exact identity and refuse another task or stale
+commit.
+
 The demo command seeds and compiles a real unfinished-task handoff. `make mcp-check` then starts
-Threadline over stdio, connects with the official MCP client, discovers five read-only tools, and
+Threadline over stdio, connects with the official MCP client, discovers six read-only tools, and
 verifies an exact-commit response with citations, unknowns, and conflicts. To keep the synthetic
 demo server open for another local client, run:
 

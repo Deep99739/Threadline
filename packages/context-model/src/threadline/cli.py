@@ -11,6 +11,7 @@ from pathlib import Path
 import uvicorn
 
 from threadline.api import create_app
+from threadline.client_profiles import build_client_profiles
 from threadline.demo import default_demo_repository, prepare_demo_repository, run_demo
 from threadline.manifest import initialize_manifest
 from threadline.mcp_runtime import serve_demo_mcp, serve_workspace_mcp
@@ -40,6 +41,12 @@ def _parser() -> argparse.ArgumentParser:
     sync.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
     sync.add_argument("--database-url")
     sync.add_argument("--query")
+
+    clients = subparsers.add_parser(
+        "clients", help="print project-scoped MCP profiles without writing client settings"
+    )
+    clients.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    clients.add_argument("--python-executable", type=Path)
 
     prepare = subparsers.add_parser(
         "prepare-demo", help="create the synthetic Git continuation repository"
@@ -118,6 +125,17 @@ def main(arguments: Sequence[str] | None = None) -> None:
                         else "ok"
                     ),
                 },
+                indent=2,
+            )
+        )
+        return
+    if parsed.command == "clients":
+        print(
+            json.dumps(
+                build_client_profiles(
+                    parsed.repository,
+                    python_executable=parsed.python_executable,
+                ),
                 indent=2,
             )
         )

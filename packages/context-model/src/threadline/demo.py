@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -30,13 +31,21 @@ def default_demo_repository() -> Path:
     return project_root() / ".threadline" / "demo-repository"
 
 
-def _git(root: Path, *arguments: str) -> None:
+def _git(
+    root: Path,
+    *arguments: str,
+    environment: dict[str, str] | None = None,
+) -> None:
+    command_environment = os.environ.copy()
+    if environment:
+        command_environment.update(environment)
     subprocess.run(
         ["git", "-C", str(root), *arguments],
         check=True,
         capture_output=True,
         text=True,
         timeout=15,
+        env=command_environment,
     )
 
 
@@ -62,6 +71,10 @@ def prepare_demo_repository(destination: Path) -> Path:
         "commit",
         "-m",
         "Create unfinished retry task",
+        environment={
+            "GIT_AUTHOR_DATE": "2026-08-09T10:30:00Z",
+            "GIT_COMMITTER_DATE": "2026-08-09T10:30:00Z",
+        },
     )
     return destination
 

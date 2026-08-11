@@ -35,7 +35,11 @@ slice:
 - deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
-- four scope-bound, read-only MCP tools proven through a real stdio client;
+- five scope-bound, read-only MCP tools proven through a real stdio client;
+- stale-handoff refusal with source-level invalidation reasons after the branch head moves;
+- an official MCP Agent B client that performs the expected continuation, commits it, and
+  re-verifies the resulting repository state;
+- an executable primary-scenario evaluation with raw baseline outcomes and disclosed limits;
 - explicit Alembic migrations and tenant-scoped PostgreSQL storage;
 - a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
 - a read-only HTTP demo surface over that exact compiled handoff;
@@ -76,6 +80,7 @@ make local-up
 make migrate
 make demo
 make mcp-check
+make phase1-eval
 npm --prefix apps/web install
 ```
 
@@ -87,6 +92,7 @@ make local-up
 make migrate
 make demo
 make mcp-check
+make phase1-eval
 ```
 
 To run the interactive evidence workbench, keep these in two terminals after `make demo`:
@@ -107,13 +113,20 @@ make local-down
 ```
 
 The demo command seeds and compiles a real unfinished-task handoff. `make mcp-check` then starts
-Threadline over stdio, connects with the official MCP client, discovers four read-only tools, and
+Threadline over stdio, connects with the official MCP client, discovers five read-only tools, and
 verifies an exact-commit response with citations, unknowns, and conflicts. To keep the server open
 for another local client, run:
 
 ```bash
 make mcp
 ```
+
+`make phase1-eval` runs the complete scenario in an isolated temporary repository. Agent B reads
+the exact handoff through MCP, opens its cited evidence, completes the retry integration, runs the
+full suite, commits the change, proves that the old handoff is stale and refused, and recompiles a
+current verified handoff. The raw point-in-time report is retained in
+[`evals/results/phase1-primary.json`](./evals/results/phase1-primary.json). The report deliberately
+marks the LLM-summary baseline unmeasured until a provider, model, and prompt are frozen.
 
 Threadline uses dedicated local host ports so it does not collide with common local services:
 

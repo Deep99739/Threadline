@@ -45,6 +45,7 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
             "explain_context_selection",
             "get_evidence",
             "get_task_context",
+            "list_stale_context",
             "trace_decision",
         }
         assert all(
@@ -80,6 +81,17 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         assert stale_result.structured_content["status"] == "abstained"
         assert stale_result.structured_content["data"] == {}
 
+        current_staleness = await client.call_tool(
+            "list_stale_context",
+            {
+                "task_id": str(DEMO_TASK_ID),
+                "branch": version.branch,
+                "commit_sha": version.commit_sha,
+            },
+        )
+        assert current_staleness.structured_content["status"] == "ok"
+        assert current_staleness.structured_content["data"]["items"] == []
+
         decision_result = await client.call_tool(
             "trace_decision",
             {
@@ -92,6 +104,9 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         decision = decision_result.structured_content
         assert decision["status"] == "partial"
         assert decision["data"]["state"] == "ASSERTED"
+        assert decision["data"]["rejected_alternatives"] == [
+            "Generate a new idempotency key for every attempt."
+        ]
         assert decision["warnings"]
 
         missing_decision = await client.call_tool(

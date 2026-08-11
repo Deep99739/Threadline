@@ -45,6 +45,7 @@ async def verify() -> None:
             "explain_context_selection",
             "get_evidence",
             "get_task_context",
+            "list_stale_context",
             "trace_decision",
         }
         if tool_names != expected_tools:
@@ -71,7 +72,7 @@ async def verify() -> None:
             raise RuntimeError("The MCP response is not bound to the active commit")
 
     print(
-        "MCP proof passes: real stdio client, 4 read-only tools, exact commit, "
+        "MCP proof passes: real stdio client, 5 read-only tools, exact commit, "
         "cited partial handoff."
     )
 

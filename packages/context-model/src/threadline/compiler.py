@@ -142,6 +142,11 @@ def compile_handoff(
         "repository_version": snapshot.repository_version.model_dump(mode="json"),
         "objective": snapshot.task.objective,
         "constraints": [item.statement for item in snapshot.constraints],
+        "rejected_approaches": [
+            rejected
+            for decision in snapshot.decisions
+            for rejected in decision.rejected_alternatives
+        ],
         "verified_completed_work": [
             f"{item.subject_key} {item.predicate}"
             for item in snapshot.claims
@@ -150,6 +155,7 @@ def compile_handoff(
         "contradictions": list(conflicts),
         "unknowns": list(unknowns),
         "next_action": _next_action(snapshot),
+        "freshness_rules": {str(item.id): item.freshness_rule for item in snapshot.claims},
         "context_pack": context_pack.model_dump(mode="json"),
     }
     handoff = Handoff(

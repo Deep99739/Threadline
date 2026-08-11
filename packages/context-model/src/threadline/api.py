@@ -145,6 +145,7 @@ def create_app(database_url: str | None = None) -> FastAPI:
             "epistemic_state": "ASSERTED",
             "statement": item.statement,
             "rationale": item.rationale,
+            "rejected_alternatives": list(item.rejected_alternatives),
             "source_asserted_approver": str(item.approved_by) if item.approved_by else None,
             "evidence_ids": [str(value) for value in item.evidence_ids],
             "warning": "Repository metadata does not authenticate the asserted approver.",

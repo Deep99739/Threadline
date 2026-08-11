@@ -95,6 +95,43 @@ def _calls_symbol(tree: ast.AST, symbol: str) -> bool:
     )
 
 
+def _function(tree: ast.AST, name: str) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
+    return next(
+        (
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.name == name
+        ),
+        None,
+    )
+
+
+def _calls_argument_unchanged(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    callable_name: str,
+    argument_name: str,
+) -> bool:
+    calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == callable_name
+    ]
+    if not calls:
+        return False
+    direct = all(
+        call.args and isinstance(call.args[0], ast.Name) and call.args[0].id == argument_name
+        for call in calls
+    )
+    reassigned = any(
+        isinstance(node, ast.Name) and node.id == argument_name and isinstance(node.ctx, ast.Store)
+        for node in ast.walk(function)
+    )
+    return direct and not reassigned
+
+
 class PythonSymbolExistsVerifier:
     key = "python_symbol_exists"
     version = "1.0.0"
@@ -260,25 +297,71 @@ class TestReportScopeVerifier:
 
 class IdempotencyBehaviorVerifier:
     key = "idempotency_behavior"
-    version = "1.0.0"
+    version = "2.0.0"
 
-    def __init__(self, code_path: str, decision_path: str) -> None:
+    def __init__(
+        self,
+        code_path: str,
+        decision_path: str,
+        integration_test_path: str | None = None,
+        test_report_path: str | None = None,
+    ) -> None:
         self.code_path = code_path
         self.decision_path = decision_path
+        self.integration_test_path = integration_test_path
+        self.test_report_path = test_report_path
 
     def verify(self, context: VerificationContext) -> VerifiedClaim:
         code_evidence = context.evidence_by_path[self.code_path]
         decision_evidence = context.evidence_by_path[self.decision_path]
         tree, _ = _python_tree(context, self.code_path)
-        runner = next(
-            (
-                node
-                for node in ast.walk(tree)
-                if isinstance(node, ast.FunctionDef) and node.name == "run_job"
-            ),
-            None,
-        )
+        runner = _function(tree, "run_job")
         retry_is_wired = runner is not None and _calls_symbol(runner, "RetryPolicy")
+        preserves_key_in_code = runner is not None and _calls_argument_unchanged(
+            runner,
+            callable_name="operation",
+            argument_name="idempotency_key",
+        )
+        integration_test_covers_key = False
+        report_is_full_and_current = False
+        extra_evidence: list[Evidence] = []
+        if self.integration_test_path is not None and self.integration_test_path in context.files:
+            test_tree, test_evidence = _python_tree(context, self.integration_test_path)
+            test_function = _function(
+                test_tree,
+                "test_run_job_reuses_original_idempotency_key",
+            )
+            integration_test_covers_key = (
+                test_function is not None
+                and _calls_symbol(test_function, "run_job")
+                and any(isinstance(node, ast.Assert) for node in ast.walk(test_function))
+            )
+            extra_evidence.append(test_evidence)
+        if self.test_report_path is not None and self.test_report_path in context.files:
+            report_file = context.files[self.test_report_path]
+            report = json.loads(report_file.content)
+            tested_hashes = report.get("tested_content_hashes", {})
+            hashes_are_current = bool(tested_hashes) and all(
+                path in context.files and context.files[path].content_hash == content_hash
+                for path, content_hash in tested_hashes.items()
+            )
+            report_is_full_and_current = (
+                report.get("scope") == "FULL"
+                and report.get("status") == "PASSED"
+                and hashes_are_current
+                and self.code_path in tested_hashes
+                and self.integration_test_path in tested_hashes
+            )
+            extra_evidence.append(context.evidence_by_path[self.test_report_path])
+
+        preserves_key = (
+            retry_is_wired
+            and preserves_key_in_code
+            and integration_test_covers_key
+            and report_is_full_and_current
+        )
+        evidence_items = [code_evidence, decision_evidence, *extra_evidence]
+        state = EpistemicState.VERIFIED if preserves_key else EpistemicState.UNKNOWN
         claim = Claim(
             tenant_id=context.tenant_id,
             workspace_id=context.workspace_id,
@@ -288,15 +371,30 @@ class IdempotencyBehaviorVerifier:
             claim_type=ClaimType.BEHAVIOR,
             subject_key="run_job",
             predicate="retries_preserve_original_idempotency_key",
-            value={"retry_is_wired": retry_is_wired, "preserves_key": None},
-            epistemic_state=EpistemicState.UNKNOWN,
-            evidence=(
-                EvidenceLink(evidence_id=code_evidence.id, relation=EvidenceRelation.SUPPORTS),
-                EvidenceLink(
-                    evidence_id=decision_evidence.id,
-                    relation=EvidenceRelation.SUPPORTS,
-                ),
+            value={
+                "retry_is_wired": retry_is_wired,
+                "preserves_key_in_code": preserves_key_in_code,
+                "integration_test_covers_key": integration_test_covers_key,
+                "full_current_test_report": report_is_full_and_current,
+                "preserves_key": preserves_key,
+            },
+            epistemic_state=state,
+            evidence=tuple(
+                EvidenceLink(evidence_id=item.id, relation=EvidenceRelation.SUPPORTS)
+                for item in evidence_items
             ),
             freshness_rule="invalidate_on_runner_or_integration_test_change",
         )
-        return VerifiedClaim(claim=claim, verification=None)
+        if not preserves_key:
+            return VerifiedClaim(claim=claim, verification=None)
+        return VerifiedClaim(
+            claim=claim,
+            verification=_verification(
+                context=context,
+                claim=claim,
+                evidence_ids=tuple(item.id for item in evidence_items),
+                verifier_key=self.key,
+                verifier_version=self.version,
+                result=VerificationResult.VERIFIED,
+            ),
+        )

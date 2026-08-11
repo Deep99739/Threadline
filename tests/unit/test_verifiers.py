@@ -192,6 +192,61 @@ def test_behavior_verifier_refuses_to_infer_runtime_idempotency(wired: bool) -> 
     )
 
     assert result.claim.epistemic_state is EpistemicState.UNKNOWN
-    assert result.claim.value == {"retry_is_wired": wired, "preserves_key": None}
+    assert result.claim.value == {
+        "retry_is_wired": wired,
+        "preserves_key_in_code": False,
+        "integration_test_covers_key": False,
+        "full_current_test_report": False,
+        "preserves_key": False,
+    }
     assert result.verification is None
     assert len(result.claim.evidence) == 2
+
+
+def test_behavior_verifier_certifies_key_reuse_only_with_current_full_test() -> None:
+    source = git_file(
+        "src/job_runner.py",
+        "class RetryPolicy:\n"
+        "    pass\n\n"
+        "def run_job(operation, idempotency_key):\n"
+        "    policy = RetryPolicy()\n"
+        "    for _ in range(3):\n"
+        "        try:\n"
+        "            return operation(idempotency_key)\n"
+        "        except Exception:\n"
+        "            pass\n",
+    )
+    integration_test = git_file(
+        "tests/test_retry_policy.py",
+        "from src.job_runner import run_job\n\n"
+        "def test_run_job_reuses_original_idempotency_key():\n"
+        "    attempted_keys = []\n"
+        "    result = run_job(lambda key: attempted_keys.append(key), 'job-42')\n"
+        "    assert attempted_keys == ['job-42']\n",
+    )
+    decision = git_file("threadline/decision.json", "{}")
+    report = git_file(
+        "threadline/test-report.json",
+        json.dumps(
+            {
+                "scope": "FULL",
+                "status": "PASSED",
+                "tested_content_hashes": {
+                    source.path: source.content_hash,
+                    integration_test.path: integration_test.content_hash,
+                },
+            }
+        ),
+    )
+
+    result = IdempotencyBehaviorVerifier(
+        source.path,
+        decision.path,
+        integration_test.path,
+        report.path,
+    ).verify(context(source, integration_test, decision, report))
+
+    assert result.claim.epistemic_state is EpistemicState.VERIFIED
+    assert result.claim.value["preserves_key"] is True
+    assert result.verification is not None
+    assert result.verification.result is VerificationResult.VERIFIED

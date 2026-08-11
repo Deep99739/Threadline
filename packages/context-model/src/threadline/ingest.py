@@ -97,6 +97,7 @@ def ingest_local_repository(
         status=decision_data["status"],
         statement=decision_data["statement"],
         rationale=decision_data["rationale"],
+        rejected_alternatives=(decision_data["rejected_alternative"],),
         approved_by=UUID(decision_data["approved_by"]),
         evidence_ids=(evidence_by_path[DECISION_PATH].id,),
     )
@@ -146,7 +147,12 @@ def ingest_local_repository(
             PythonSymbolExistsVerifier(CODE_PATH, "RetryPolicy"),
             PythonCallPathVerifier(CODE_PATH, "run_job", "RetryPolicy"),
             TestReportScopeVerifier(TEST_REPORT_PATH),
-            IdempotencyBehaviorVerifier(CODE_PATH, DECISION_PATH),
+            IdempotencyBehaviorVerifier(
+                CODE_PATH,
+                DECISION_PATH,
+                "tests/test_retry_policy.py",
+                TEST_REPORT_PATH,
+            ),
         )
     )
     claims = tuple(item.claim for item in verified_claims)

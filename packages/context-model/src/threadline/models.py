@@ -188,6 +188,7 @@ class Decision(TenantScoped):
     status: str
     statement: NonEmpty
     rationale: NonEmpty
+    rejected_alternatives: tuple[NonEmpty, ...] = ()
     approved_by: UUID | None = None
     evidence_ids: tuple[UUID, ...] = ()
 

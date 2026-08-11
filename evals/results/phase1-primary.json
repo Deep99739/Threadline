@@ -1,0 +1,85 @@
+{
+  "report": "threadline-phase1-primary-evaluation",
+  "generated_at": "2026-08-11T21:18:49.364191+00:00",
+  "dataset": "primary-demo-v0.1",
+  "sample_size": 1,
+  "repository": {
+    "name": "threadline-demo",
+    "branch": "feature/retry-jobs",
+    "initial_commit": "2d92cb251b0c5481eca4f2335b0f604db9e0d379",
+    "resulting_commit": "12f3ed8467188fe6614d5f311c6506c9a83b7fdd"
+  },
+  "baselines": [
+    {
+      "baseline_id": "B0",
+      "name": "transcript-only latest assertion",
+      "execution_status": "recorded",
+      "next_action": "No implementation action; retries are already implemented and all tests pass.",
+      "next_action_correct": false,
+      "unsupported_completion_accepted": true,
+      "required_evidence_recall": 0.3333333333333333,
+      "citation_validity": 1.0,
+      "limitations": [
+        "Deterministic transcript-only policy uses the latest agent assertion.",
+        "This is a baseline implementation, not an LLM benchmark."
+      ]
+    },
+    {
+      "baseline_id": "B1",
+      "name": "LLM transcript summary",
+      "execution_status": "not_run",
+      "next_action": null,
+      "next_action_correct": null,
+      "unsupported_completion_accepted": null,
+      "required_evidence_recall": null,
+      "citation_validity": null,
+      "limitations": [
+        "No model/provider was invoked in the deterministic Phase 1 gate.",
+        "Freeze a model and prompt before this baseline becomes publishable evidence."
+      ]
+    },
+    {
+      "baseline_id": "B2",
+      "name": "lexical retrieval only",
+      "execution_status": "recorded",
+      "next_action": null,
+      "next_action_correct": null,
+      "unsupported_completion_accepted": null,
+      "required_evidence_recall": 1.0,
+      "citation_validity": 1.0,
+      "limitations": [
+        "Retrieval-only baseline returns sources but does not verify claims or choose an action."
+      ]
+    },
+    {
+      "baseline_id": "B4",
+      "name": "Threadline Phase 1",
+      "execution_status": "recorded",
+      "next_action": "Wire RetryPolicy into run_job while reusing the original idempotency key, then add an integration test and run the complete suite.",
+      "next_action_correct": true,
+      "unsupported_completion_accepted": false,
+      "required_evidence_recall": 1.0,
+      "citation_validity": 1.0,
+      "limitations": [
+        "One synthetic primary case; not a general accuracy claim.",
+        "The ranker is lexical and the action policy is deterministic."
+      ]
+    }
+  ],
+  "phase1_gates": {
+    "agent_b_used_official_mcp_client": true,
+    "agent_b_took_expected_next_action": true,
+    "unsupported_completion_not_verified": true,
+    "changed_evidence_marked_stale": true,
+    "stale_handoff_refused": true,
+    "post_change_full_suite_passed": true,
+    "post_change_handoff_has_no_unknowns_or_conflicts": true,
+    "all_returned_citations_resolved": true
+  },
+  "failures_and_limits": [
+    "The transcript-only baseline accepts an unsupported completion assertion.",
+    "The LLM-summary baseline is unmeasured until a model and prompt are frozen.",
+    "The sample contains one synthetic repository and cannot support external-use claims.",
+    "Clean-machine and editor-client compatibility are separate release gates."
+  ]
+}

@@ -98,7 +98,10 @@ def lexical_retrieve(
         )
 
     for decision in snapshot.decisions:
-        statement = f"{decision.statement} {decision.rationale}"
+        rejected = " ".join(
+            f"Rejected alternative: {item}" for item in decision.rejected_alternatives
+        )
+        statement = f"{decision.statement} {decision.rationale} {rejected}".strip()
         candidates.append(
             RetrievedEntity(
                 entity_type="decision",

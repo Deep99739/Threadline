@@ -72,7 +72,6 @@ def main(arguments: Sequence[str] | None = None) -> None:
             port=parsed.port,
         )
         return
-
     result = run_demo(_database_url(parsed.database_url), parsed.repository)
     print(
         json.dumps(

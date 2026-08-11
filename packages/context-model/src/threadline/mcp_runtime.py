@@ -10,6 +10,7 @@ from threadline.demo import (
     DEMO_TASK_ID,
     DEMO_TENANT_ID,
     DEMO_WORKSPACE_ID,
+    default_demo_repository,
 )
 from threadline.mcp_server import create_mcp_server
 from threadline.service import ServiceScope
@@ -26,7 +27,12 @@ def serve_demo_mcp(database_url: str) -> None:
             actor_id=DEMO_ACTOR_ID,
             repository_id=DEMO_REPOSITORY_ID,
         )
-        create_mcp_server(store, scope, DEMO_TASK_ID).run("stdio")
+        create_mcp_server(
+            store,
+            scope,
+            DEMO_TASK_ID,
+            default_demo_repository(),
+        ).run("stdio")
     finally:
         store.close()
 
@@ -41,6 +47,7 @@ def serve_workspace_mcp(repository_path: Path, database_url: str | None = None) 
             store,
             synced.workspace.scope,
             synced.workspace.manifest.task.id,
+            synced.workspace.repository_path,
         ).run("stdio")
     finally:
         store.close()

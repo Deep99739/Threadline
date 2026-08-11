@@ -90,6 +90,7 @@ class ContinuationProof:
     resulting_commit: str
     action_taken: str
     cited_evidence_count: int
+    live_drift_refused_before_ingest: bool
     stale_items: tuple[dict[str, Any], ...]
     stale_handoff_refused: bool
     final_status: str
@@ -102,6 +103,7 @@ class ContinuationProof:
             "resulting_commit": self.resulting_commit,
             "action_taken": self.action_taken,
             "cited_evidence_count": self.cited_evidence_count,
+            "live_drift_refused_before_ingest": self.live_drift_refused_before_ingest,
             "stale_items": list(self.stale_items),
             "stale_handoff_refused": self.stale_handoff_refused,
             "final_status": self.final_status,
@@ -223,7 +225,7 @@ async def run_agent_b_continuation(
         task_id=DEMO_TASK_ID,
     )
     initial = initial_snapshot.repository_version
-    server = create_mcp_server(store, scope, DEMO_TASK_ID)
+    server = create_mcp_server(store, scope, DEMO_TASK_ID, repository_path)
     handoff = await read_agent_handoff(
         server,
         task_id=DEMO_TASK_ID,
@@ -232,9 +234,33 @@ async def run_agent_b_continuation(
     )
     test_output = _apply_expected_action(repository_path, handoff)
     resulting_commit = _git(repository_path, "rev-parse", "HEAD")
+
+    async with Client(server) as client:
+        drift_status_result = await client.call_tool("get_workspace_status", {})
+        drift_context_result = await client.call_tool(
+            "get_task_context",
+            {
+                "task_id": str(DEMO_TASK_ID),
+                "branch": initial.branch,
+                "commit_sha": initial.commit_sha,
+            },
+        )
+        drift_status = drift_status_result.structured_content
+        drift_context = drift_context_result.structured_content
+        live_drift_refused_before_ingest = (
+            isinstance(drift_status, dict)
+            and drift_status.get("status") == "stale"
+            and isinstance(drift_context, dict)
+            and drift_context.get("status") == "abstained"
+        )
+        if not live_drift_refused_before_ingest:
+            raise RuntimeError("Threadline served context after live repository drift")
+
     service.ingest(repository_path=repository_path, scope=scope)
 
-    async with Client(create_mcp_server(store, scope, DEMO_TASK_ID)) as client:
+    async with Client(
+        create_mcp_server(store, scope, DEMO_TASK_ID, repository_path)
+    ) as client:
         stale_result = await client.call_tool(
             "list_stale_context",
             {
@@ -280,6 +306,7 @@ async def run_agent_b_continuation(
         resulting_commit=resulting_commit,
         action_taken=handoff.next_action,
         cited_evidence_count=len(handoff.evidence),
+        live_drift_refused_before_ingest=live_drift_refused_before_ingest,
         stale_items=tuple(item for item in stale_items if isinstance(item, dict)),
         stale_handoff_refused=stale_handoff_refused,
         final_status=final_status,

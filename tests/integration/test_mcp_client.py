@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from mcp import Client, ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from tests.helpers import PROJECT_ROOT
+from tests.helpers import PROJECT_ROOT, git
 
 from threadline.demo import (
     DEMO_ACTOR_ID,
@@ -39,7 +39,9 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         repository_id=DEMO_REPOSITORY_ID,
     )
 
-    async with Client(create_mcp_server(store, scope, DEMO_TASK_ID)) as client:
+    async with Client(
+        create_mcp_server(store, scope, DEMO_TASK_ID, seeded.repository_path)
+    ) as client:
         discovered = await client.list_tools()
         assert {tool.name for tool in discovered.tools} == {
             "explain_context_selection",
@@ -192,6 +194,81 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
 
 
 @pytest.mark.anyio
+async def test_live_repository_drift_forces_abstention_until_resync(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'runtime-drift.db'}"
+    seeded = run_demo(database_url, tmp_path / "demo-repository")
+    version = seeded.handoff.context_pack.repository_version
+    store = ThreadlineStore(database_url)
+    scope = ServiceScope(
+        tenant_id=DEMO_TENANT_ID,
+        workspace_id=DEMO_WORKSPACE_ID,
+        actor_id=DEMO_ACTOR_ID,
+        repository_id=DEMO_REPOSITORY_ID,
+    )
+
+    async with Client(
+        create_mcp_server(store, scope, DEMO_TASK_ID, seeded.repository_path)
+    ) as client:
+        source = seeded.repository_path / "src" / "job_runner.py"
+        source.write_text(source.read_text() + "\n# uncommitted runtime drift\n")
+
+        dirty_result = await client.call_tool("get_workspace_status", {})
+        dirty = dirty_result.structured_content
+        assert dirty["status"] == "dirty"
+        assert dirty["data"]["handoff_current"] is False
+        assert dirty["data"]["working_repository"]["dirty_paths"] == [
+            "src/job_runner.py"
+        ]
+
+        dirty_context_result = await client.call_tool(
+            "get_task_context",
+            {
+                "task_id": str(DEMO_TASK_ID),
+                "branch": version.branch,
+                "commit_sha": version.commit_sha,
+            },
+        )
+        dirty_context = dirty_context_result.structured_content
+        assert dirty_context["status"] == "abstained"
+        assert "uncommitted changes" in dirty_context["warnings"][0]
+
+        git(seeded.repository_path, "add", "src/job_runner.py")
+        git(
+            seeded.repository_path,
+            "-c",
+            "user.name=Threadline Test",
+            "-c",
+            "user.email=threadline@example.invalid",
+            "commit",
+            "-m",
+            "Create runtime drift",
+        )
+        live_commit = git(seeded.repository_path, "rev-parse", "HEAD")
+        assert live_commit != version.commit_sha
+
+        stale_result = await client.call_tool("get_workspace_status", {})
+        stale = stale_result.structured_content
+        assert stale["status"] == "stale"
+        assert stale["data"]["handoff_current"] is False
+        assert stale["data"]["working_repository"]["commit"] == live_commit
+        assert stale["data"]["working_repository"]["dirty_paths"] == []
+
+        stale_context_result = await client.call_tool(
+            "get_task_context",
+            {
+                "task_id": str(DEMO_TASK_ID),
+                "branch": version.branch,
+                "commit_sha": version.commit_sha,
+            },
+        )
+        stale_context = stale_context_result.structured_content
+        assert stale_context["status"] == "abstained"
+        assert "repository moved" in stale_context["warnings"][0]
+
+    store.close()
+
+
+@pytest.mark.anyio
 async def test_stdio_process_is_consumed_by_real_client_session(tmp_path: Path) -> None:
     database_url = f"sqlite+pysqlite:///{tmp_path / 'stdio.db'}"
     seeded = run_demo(database_url, tmp_path / "demo-repository")
@@ -233,7 +310,9 @@ async def test_mcp_scope_fails_closed_without_authorized_task(tmp_path: Path) ->
         repository_id=DEMO_REPOSITORY_ID,
     )
 
-    async with Client(create_mcp_server(store, foreign_scope, DEMO_TASK_ID)) as client:
+    async with Client(
+        create_mcp_server(store, foreign_scope, DEMO_TASK_ID, seeded.repository_path)
+    ) as client:
         result = await client.call_tool(
             "get_task_context",
             {

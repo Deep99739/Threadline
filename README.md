@@ -30,7 +30,7 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- ten architecture decision records and a threat model;
+- eleven architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
 - a strict, committed `threadline.json` contract for arbitrary local repositories;
 - explicit `init` and `sync` commands with refusal of uncommitted context configuration;
@@ -39,6 +39,7 @@ slice:
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
 - six scope-bound, read-only MCP tools proven through a real stdio client;
+- live working-tree and branch-head drift detection on every MCP read;
 - stale-handoff refusal with source-level invalidation reasons after the branch head moves;
 - an official MCP Agent B client that performs the expected continuation, commits it, and
   re-verifies the resulting repository state;
@@ -162,7 +163,9 @@ chosen proprietary client.
 
 Every client can call `get_workspace_status` first to discover the bound task, branch, commit, and
 handoff freshness. The remaining tools require that exact identity and refuse another task or stale
-commit.
+commit. Threadline also re-reads the live Git state on every tool call. Uncommitted edits force
+abstention, and a moved branch head remains stale until Threadline synchronizes and recompiles the
+handoff.
 
 The demo command seeds and compiles a real unfinished-task handoff. `make mcp-check` then starts
 Threadline over stdio, connects with the official MCP client, discovers six read-only tools, and

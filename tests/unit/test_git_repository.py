@@ -12,6 +12,7 @@ from threadline.git_repository import (
     GitRepositoryError,
     evidence_from_git_file,
     read_git_snapshot,
+    read_git_working_state,
 )
 
 
@@ -62,6 +63,25 @@ def test_rejects_non_repository_and_detached_head(tmp_path: Path) -> None:
     git(root, "checkout", "--detach")
     with pytest.raises(GitRepositoryError, match="detached HEAD"):
         read_git_snapshot(root, uuid4())
+
+
+def test_reads_live_head_and_dirty_paths(tmp_path: Path) -> None:
+    root = make_demo_repository(tmp_path)
+    repository_id = uuid4()
+    initial = read_git_working_state(root / "src", repository_id)
+
+    assert initial.root == root.resolve()
+    assert initial.repository_version.repository_id == repository_id
+    assert initial.repository_version.commit_sha == git(root, "rev-parse", "HEAD")
+    assert initial.dirty_paths == ()
+
+    (root / "src" / "job_runner.py").write_text(
+        (root / "src" / "job_runner.py").read_text() + "\n# unfinished local edit\n"
+    )
+    (root / "new-note.md").write_text("untracked context\n")
+    dirty = read_git_working_state(root, repository_id)
+
+    assert set(dirty.dirty_paths) == {"new-note.md", "src/job_runner.py"}
 
 
 def test_builds_immutable_evidence_locator(tmp_path: Path) -> None:

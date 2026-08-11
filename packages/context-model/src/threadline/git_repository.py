@@ -45,11 +45,18 @@ class GitSnapshot:
     files: tuple[GitFile, ...]
 
 
+@dataclass(frozen=True)
+class GitWorkingState:
+    root: Path
+    repository_version: RepositoryVersion
+    dirty_paths: tuple[str, ...]
+
+
 class GitRepositoryError(ValueError):
     pass
 
 
-def _git(root: Path, *arguments: str) -> str:
+def _git(root: Path, *arguments: str, strip: bool = True) -> str:
     result = subprocess.run(
         ["git", "-C", str(root), *arguments],
         check=False,
@@ -60,7 +67,7 @@ def _git(root: Path, *arguments: str) -> str:
     if result.returncode != 0:
         message = result.stderr.strip() or "git command failed"
         raise GitRepositoryError(message)
-    return result.stdout.strip()
+    return result.stdout.strip() if strip else result.stdout
 
 
 def resolve_git_root(path: Path) -> Path:
@@ -72,6 +79,49 @@ def resolve_git_root(path: Path) -> Path:
     if not branch:
         raise GitRepositoryError("detached HEAD is not accepted for a continuation task")
     return root
+
+
+def read_git_working_state(path: Path, repository_id: UUID) -> GitWorkingState:
+    """Read the live branch, HEAD, and dirty paths without trusting a caller-supplied version."""
+
+    root = resolve_git_root(path)
+    branch = _git(root, "branch", "--show-current")
+    commit_sha = _git(root, "rev-parse", "HEAD")
+    status = _git(
+        root,
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        strip=False,
+    )
+    records = status.split("\0")
+    dirty: list[str] = []
+    index = 0
+    while index < len(records):
+        record = records[index]
+        if len(record) < 4:
+            index += 1
+            continue
+        dirty_path = record[3:]
+        if dirty_path:
+            dirty.append(dirty_path)
+        if (record[0] in "RC" or record[1] in "RC") and index + 1 < len(records):
+            prior_path = records[index + 1]
+            if prior_path:
+                dirty.append(prior_path)
+            index += 1
+        index += 1
+    dirty_paths = tuple(dict.fromkeys(dirty))
+    return GitWorkingState(
+        root=root,
+        repository_version=RepositoryVersion(
+            repository_id=repository_id,
+            branch=branch,
+            commit_sha=commit_sha,
+        ),
+        dirty_paths=dirty_paths,
+    )
 
 
 def read_git_snapshot(path: Path, repository_id: UUID) -> GitSnapshot:

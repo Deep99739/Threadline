@@ -47,6 +47,7 @@ async def test_agent_b_continues_through_mcp_and_stale_handoff_is_refused(
     assert proof.initial_commit == seeded.handoff.context_pack.repository_version.commit_sha
     assert proof.resulting_commit != proof.initial_commit
     assert proof.cited_evidence_count >= 3
+    assert proof.live_drift_refused_before_ingest is True
     assert proof.stale_handoff_refused is True
     assert proof.stale_items
     assert any(

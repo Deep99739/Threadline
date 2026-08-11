@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
+from threadline.git_repository import GitWorkingState, read_git_working_state
 from threadline.models import ContextSnapshot
 from threadline.service import ServiceScope
 from threadline.staleness import handoff_repository_version, stale_context_items
@@ -68,8 +70,21 @@ def _version_warning(
     content: dict[str, Any],
     branch: str,
     commit_sha: str,
+    working_state: GitWorkingState,
 ) -> str | None:
     current = snapshot.repository_version
+    if working_state.repository_version != current:
+        live = working_state.repository_version
+        return (
+            "The repository moved after Threadline synchronized: "
+            f"stored {current.branch}@{current.commit_sha}, "
+            f"live {live.branch}@{live.commit_sha}. Restart or re-sync Threadline."
+        )
+    if working_state.dirty_paths:
+        return (
+            "The working tree contains uncommitted changes outside the exact-commit snapshot: "
+            f"{', '.join(working_state.dirty_paths)}. Commit or revert them, then re-sync."
+        )
     if current.branch != branch or current.commit_sha != commit_sha:
         return (
             "Requested repository version does not match the active repository state: "
@@ -89,6 +104,7 @@ def create_mcp_server(
     store: ThreadlineStore,
     scope: ServiceScope,
     active_task_id: UUID,
+    repository_path: Path,
 ) -> MCPServer:
     """Bind tools to one trusted local scope and task; callers cannot change either."""
 
@@ -101,6 +117,9 @@ def create_mcp_server(
         ),
         version="0.1.0",
     )
+
+    def working_state() -> GitWorkingState:
+        return read_git_working_state(repository_path, scope.repository_id)
 
     def load(task_id: UUID) -> tuple[ContextSnapshot, dict[str, Any]]:
         if task_id != active_task_id:
@@ -122,14 +141,20 @@ def create_mcp_server(
         """Discover the server-bound task and exact repository version before using other tools."""
 
         snapshot, content = load(active_task_id)
+        live = working_state()
         handoff_version = handoff_repository_version(content)
-        is_stale = handoff_version != snapshot.repository_version
+        repository_moved = live.repository_version != snapshot.repository_version
+        working_tree_dirty = bool(live.dirty_paths)
+        is_stale = handoff_version != snapshot.repository_version or repository_moved
+        is_current = not is_stale and not working_tree_dirty
         return _envelope(
             snapshot,
             content,
             status=(
                 "stale"
                 if is_stale
+                else "dirty"
+                if working_tree_dirty
                 else (
                     "partial"
                     if content.get("unknowns") or content.get("contradictions")
@@ -140,11 +165,27 @@ def create_mcp_server(
                 "task_id": str(active_task_id),
                 "objective": snapshot.task.objective,
                 "next_action": content["next_action"],
-                "handoff_current": not is_stale,
+                "handoff_current": is_current,
+                "working_repository": {
+                    "branch": live.repository_version.branch,
+                    "commit": live.repository_version.commit_sha,
+                    "dirty_paths": list(live.dirty_paths),
+                },
             },
             warnings=(
-                ["The latest handoff is stale and must be recompiled before continuation."]
-                if is_stale
+                [
+                    (
+                        "The repository moved after synchronization; restart or re-sync "
+                        "Threadline before continuation."
+                    )
+                ]
+                if repository_moved
+                else [
+                    "The working tree is dirty; commit or revert changes before continuation."
+                ]
+                if working_tree_dirty
+                else ["The latest handoff is stale and must be recompiled before continuation."]
+                if not is_current
                 else []
             ),
         )
@@ -154,7 +195,13 @@ def create_mcp_server(
         """Return the latest cited handoff only when its repository version matches exactly."""
 
         snapshot, content = load(task_id)
-        warning = _version_warning(snapshot, content, branch, commit_sha)
+        warning = _version_warning(
+            snapshot,
+            content,
+            branch,
+            commit_sha,
+            working_state(),
+        )
         if warning is not None:
             return _envelope(
                 snapshot,
@@ -184,7 +231,13 @@ def create_mcp_server(
         """Trace a decision without treating repository metadata as authenticated approval."""
 
         snapshot, content = load(task_id)
-        warning = _version_warning(snapshot, content, branch, commit_sha)
+        warning = _version_warning(
+            snapshot,
+            content,
+            branch,
+            commit_sha,
+            working_state(),
+        )
         if warning is not None:
             return _envelope(snapshot, content, status="abstained", data={}, warnings=[warning])
         decision = next(
@@ -236,7 +289,13 @@ def create_mcp_server(
         """Explain the deterministic lexical and risk signals for one selected entity."""
 
         snapshot, content = load(task_id)
-        warning = _version_warning(snapshot, content, branch, commit_sha)
+        warning = _version_warning(
+            snapshot,
+            content,
+            branch,
+            commit_sha,
+            working_state(),
+        )
         if warning is not None:
             return _envelope(snapshot, content, status="abstained", data={}, warnings=[warning])
         selected = next(
@@ -276,7 +335,13 @@ def create_mcp_server(
         """Read one cited evidence object only when it belongs to the bound authorized snapshot."""
 
         snapshot, content = load(task_id)
-        warning = _version_warning(snapshot, content, branch, commit_sha)
+        warning = _version_warning(
+            snapshot,
+            content,
+            branch,
+            commit_sha,
+            working_state(),
+        )
         if warning is not None:
             return _envelope(snapshot, content, status="abstained", data={}, warnings=[warning])
         evidence = next((item for item in snapshot.evidence if item.id == evidence_id), None)
@@ -310,6 +375,32 @@ def create_mcp_server(
 
         snapshot, content = load(task_id)
         current = snapshot.repository_version
+        live = working_state()
+        runtime_warning = _version_warning(
+            snapshot,
+            content,
+            branch,
+            commit_sha,
+            live,
+        )
+        if live.repository_version != current or bool(live.dirty_paths):
+            if runtime_warning is None:
+                raise RuntimeError("live repository drift was not classified")
+            return _envelope(
+                snapshot,
+                content,
+                status="stale",
+                data={
+                    "active_repository": _repository(snapshot),
+                    "working_repository": {
+                        "branch": live.repository_version.branch,
+                        "commit": live.repository_version.commit_sha,
+                        "dirty_paths": list(live.dirty_paths),
+                    },
+                    "items": [],
+                },
+                warnings=[runtime_warning],
+            )
         if current.branch != branch or current.commit_sha != commit_sha:
             warning = (
                 "Requested repository version does not match the active repository state: "

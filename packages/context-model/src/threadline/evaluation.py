@@ -102,7 +102,7 @@ async def run_phase1_evaluation(*, database_url: str, repository_path: Path) -> 
         )
         initial_version = snapshot.repository_version
         handoff = await read_agent_handoff(
-            create_mcp_server(store, scope, DEMO_TASK_ID),
+            create_mcp_server(store, scope, DEMO_TASK_ID, repository_path),
             task_id=DEMO_TASK_ID,
             branch=initial_version.branch,
             commit_sha=initial_version.commit_sha,
@@ -220,6 +220,9 @@ async def run_phase1_evaluation(*, database_url: str, repository_path: Path) -> 
                 completion_claim.epistemic_state is not EpistemicState.VERIFIED
             ),
             "changed_evidence_marked_stale": bool(proof.stale_items),
+            "live_repository_drift_refused_before_ingest": (
+                proof.live_drift_refused_before_ingest
+            ),
             "stale_handoff_refused": proof.stale_handoff_refused,
             "post_change_full_suite_passed": "2 passed" in proof.test_output,
             "post_change_handoff_has_no_unknowns_or_conflicts": proof.final_status == "ok",

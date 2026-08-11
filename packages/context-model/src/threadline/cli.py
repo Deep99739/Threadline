@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from threadline.demo import default_demo_repository, prepare_demo_repository, run_demo
+from threadline.mcp_runtime import serve_demo_mcp
 from threadline.migrations import upgrade_database
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://threadline:threadline_local@localhost:55432/threadline"
@@ -31,6 +32,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     demo.add_argument("--database-url")
     demo.add_argument("--repository", type=Path, default=default_demo_repository())
+
+    mcp = subparsers.add_parser("mcp", help="serve the seeded local workspace over stdio")
+    mcp.add_argument("--database-url")
     return parser
 
 
@@ -49,6 +53,9 @@ def main(arguments: Sequence[str] | None = None) -> None:
     if parsed.command == "prepare-demo":
         path = prepare_demo_repository(parsed.repository)
         print(path)
+        return
+    if parsed.command == "mcp":
+        serve_demo_mcp(_database_url(parsed.database_url))
         return
 
     result = run_demo(_database_url(parsed.database_url), parsed.repository)

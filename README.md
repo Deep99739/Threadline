@@ -30,18 +30,19 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- seven architecture decision records and a threat model;
+- eight architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
 - deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
+- four scope-bound, read-only MCP tools proven through a real stdio client;
 - explicit Alembic migrations and tenant-scoped PostgreSQL storage;
 - a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
 - automated lint, type, contract, property, coverage, and structure checks; and
 - a verified local PostgreSQL, Redis, and object-store environment.
 
-The read-only MCP client proof and product UI are under development. No hosted, adoption, accuracy,
-or production-readiness claim is made yet.
+The product UI is under development. No hosted, adoption, accuracy, or production-readiness claim
+is made yet.
 
 ## Core model
 
@@ -72,6 +73,7 @@ make check
 make local-up
 make migrate
 make demo
+make mcp-check
 ```
 
 Later runs:
@@ -81,12 +83,22 @@ make check
 make local-up
 make migrate
 make demo
+make mcp-check
 ```
 
 Stop local services:
 
 ```bash
 make local-down
+```
+
+The demo command seeds and compiles a real unfinished-task handoff. `make mcp-check` then starts
+Threadline over stdio, connects with the official MCP client, discovers four read-only tools, and
+verifies an exact-commit response with citations, unknowns, and conflicts. To keep the server open
+for another local client, run:
+
+```bash
+make mcp
 ```
 
 Threadline uses dedicated local host ports so it does not collide with common local services:

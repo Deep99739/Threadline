@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from uuid import UUID
+from uuid import UUID, uuid5
 
 from threadline.models import (
     Citation,
@@ -19,6 +19,9 @@ from threadline.models import (
 )
 from threadline.retrieval import RetrievedEntity, evidence_index, lexical_retrieve
 from threadline.storage import ThreadlineStore
+
+CONTEXT_VERSION_NAMESPACE = UUID("799b4df3-3534-4857-a1af-e6bbec721b0c")
+CONTEXT_CONFIG_VERSION = "lexical-precedence.v2"
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,24 @@ def _citations(retrieved: RetrievedEntity, snapshot: ContextSnapshot) -> tuple[C
         for evidence_id in retrieved.evidence_ids
         if evidence_id in evidence
     )
+
+
+def _versioned_item(item: ContextItem) -> dict[str, object]:
+    return {
+        "logical_key": item.logical_key,
+        "entity_type": item.entity_type,
+        "statement": item.statement,
+        "epistemic_state": item.epistemic_state,
+        "selection_reason": item.selection_reason,
+        "authority_reason": item.authority_reason,
+        "citations": sorted(
+            (
+                citation.locator.model_dump(mode="json")
+                for citation in item.citations
+            ),
+            key=lambda locator: (str(locator["uri"]), str(locator["content_hash"])),
+        ),
+    }
 
 
 def _next_action(snapshot: ContextSnapshot) -> str:
@@ -93,34 +114,45 @@ def compile_handoff(
         workspace_id=workspace_id,
         query=query,
     )
-    context_version_payload = {
-        "repository_version": snapshot.repository_version.model_dump(mode="json"),
-        "task": snapshot.task.model_dump(mode="json"),
-        "claims": [item.model_dump(mode="json") for item in snapshot.claims],
-        "decisions": [item.model_dump(mode="json") for item in snapshot.decisions],
-        "constraints": [item.model_dump(mode="json") for item in snapshot.constraints],
-        "config_version": "lexical-foundation.v1",
-    }
-    context_version = ContextVersion(
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
-        created_by=actor_id,
-        repository_version=snapshot.repository_version,
-        config_version="lexical-foundation.v1",
-        root_hash=_hash_json(context_version_payload),
-        published_at=utc_now(),
-    )
     items = tuple(
         ContextItem(
+            logical_key=item.logical_key,
             entity_type=item.entity_type,
             entity_id=item.entity_id,
             statement=item.statement,
             epistemic_state=item.state,
             selection_reason=item.selection_reason,
+            authority_reason=item.authority_reason,
             citations=_citations(item, snapshot),
         )
         for item in retrieved
     )
+    context_version_payload = {
+        "repository_version": snapshot.repository_version.model_dump(mode="json"),
+        "task_id": str(task_id),
+        "purpose": "continue_task",
+        "query": query,
+        "token_budget": token_budget,
+        "items": [
+            _versioned_item(item) for item in sorted(items, key=lambda value: value.logical_key)
+        ],
+        "config_version": CONTEXT_CONFIG_VERSION,
+    }
+    root_hash = _hash_json(context_version_payload)
+    proposed_context_version = ContextVersion(
+        id=uuid5(
+            CONTEXT_VERSION_NAMESPACE,
+            f"{tenant_id}:{workspace_id}:{task_id}:{root_hash}",
+        ),
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        created_by=actor_id,
+        repository_version=snapshot.repository_version,
+        config_version=CONTEXT_CONFIG_VERSION,
+        root_hash=root_hash,
+        published_at=utc_now(),
+    )
+    context_version = store.save_context_version(proposed_context_version, task_id)
     unknowns = tuple(
         item.statement for item in items if item.epistemic_state is EpistemicState.UNKNOWN
     )
@@ -171,7 +203,6 @@ def compile_handoff(
         purpose="continue_task",
         content_hash=_hash_json(content),
     )
-    store.save_context_version(context_version, task_id)
     store.save_handoff(handoff, content)
     return CompiledHandoff(
         context_pack=context_pack,

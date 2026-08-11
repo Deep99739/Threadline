@@ -15,6 +15,7 @@ ADRs are immutable once accepted. A later decision supersedes an earlier record 
 | 009 | Committed repository manifest for local workspace context | Accepted |
 | 010 | Reviewable project client profiles and MCP bootstrap tool | Accepted |
 | 011 | Refuse continuation after live repository drift | Accepted |
+| 012 | Stable context identity and deterministic semantic differences | Accepted |
 
-ADRs 001–006 were accepted on 2026-08-11; ADRs 007–011 were accepted on 2026-08-12. These
+ADRs 001–006 were accepted on 2026-08-11; ADRs 007–012 were accepted on 2026-08-12. These
 establish the current trust invariants; measurements may cause later superseding ADRs.

@@ -42,6 +42,7 @@ async def verify() -> None:
         tools = await session.list_tools()
         tool_names = {tool.name for tool in tools.tools}
         expected_tools = {
+            "compare_context_versions",
             "explain_context_selection",
             "get_evidence",
             "get_task_context",
@@ -79,7 +80,7 @@ async def verify() -> None:
             raise RuntimeError("The MCP response is not bound to the active commit")
 
     print(
-        "MCP proof passes: real stdio client, 6 read-only tools, exact commit, "
+        "MCP proof passes: real stdio client, 7 read-only tools, exact commit, "
         "cited partial handoff."
     )
 

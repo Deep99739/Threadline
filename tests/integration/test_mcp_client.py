@@ -44,6 +44,7 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
     ) as client:
         discovered = await client.list_tools()
         assert {tool.name for tool in discovered.tools} == {
+            "compare_context_versions",
             "explain_context_selection",
             "get_evidence",
             "get_task_context",
@@ -151,8 +152,10 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         )
         explanation = explanation_result.structured_content
         assert explanation["status"] == "ok"
+        assert explanation["data"]["logical_key"]
         assert explanation["data"]["selection_reason"]
-        assert explanation["data"]["ranker_version"] == "lexical-foundation.v1"
+        assert explanation["data"]["authority_reason"]
+        assert explanation["data"]["ranker_version"] == "lexical-precedence.v2"
 
         missing_selection = await client.call_tool(
             "explain_context_selection",

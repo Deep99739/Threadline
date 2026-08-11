@@ -67,6 +67,13 @@ def test_ingest_compile_and_read_cited_handoff(tmp_path: Path) -> None:
     assert constraint_items[0].citations[0].locator.uri.endswith("/threadline/decision.json")
     assert service.latest_handoff(scope=service_scope(), task_id=TASK_ID) == compiled.content
 
+    repeated = service.compile_task_handoff(
+        scope=service_scope(),
+        task_id=TASK_ID,
+        query="continue retry work without duplicate side effects",
+    )
+    assert repeated.context_version == compiled.context_version
+
     with pytest.raises(PermissionError, match="caller scope"):
         lexical_retrieve(
             ingestion.snapshot,
@@ -176,6 +183,19 @@ def test_store_rejects_out_of_scope_reads_and_content(tmp_path: Path) -> None:
         service.latest_handoff(scope=service_scope(), task_id=TASK_ID)
     with pytest.raises(ValueError, match="outside the snapshot"):
         store.save_snapshot(result.snapshot, evidence_content={uuid4(): "foreign"})
+
+    compiled = service.compile_task_handoff(
+        scope=service_scope(),
+        task_id=TASK_ID,
+        query="continue retry work",
+    )
+    with pytest.raises(LookupError, match="authorized task scope"):
+        store.load_handoff_for_context_version(
+            tenant_id=TENANT_ID,
+            workspace_id=uuid4(),
+            task_id=TASK_ID,
+            context_version_id=compiled.context_version.id,
+        )
 
     store.reset_tenant_for_demo(TENANT_ID)
     with pytest.raises(LookupError, match="authorized scope"):

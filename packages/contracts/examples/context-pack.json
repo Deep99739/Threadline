@@ -15,11 +15,13 @@
   "token_budget": 2048,
   "items": [
     {
+      "logical_key": "constraint:retry-idempotency",
       "entity_type": "constraint",
       "entity_id": "10000000-0000-4000-8000-000000000008",
       "statement": "A retry must reuse the original idempotency key.",
       "epistemic_state": "VERIFIED",
       "selection_reason": "Approved invariant for the active task.",
+      "authority_reason": "An approved constraint is the active task boundary.",
       "citations": [
         {
           "evidence_id": "10000000-0000-4000-8000-000000000009",

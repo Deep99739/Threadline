@@ -187,12 +187,18 @@ def evidence_from_git_file(
     actor_id: UUID,
     repository_version: RepositoryVersion,
 ) -> Evidence:
+    evidence_type = {
+        "threadline.json": "PROJECT_MANIFEST",
+        "threadline/decision.json": "DECISION_RECORD",
+        "threadline/observations.json": "OBSERVATION_RECORD",
+        "threadline/test-report.json": "TEST_REPORT",
+    }.get(git_file.path, "GIT_FILE")
     return Evidence(
         tenant_id=tenant_id,
         workspace_id=workspace_id,
         created_by=actor_id,
         repository_version=repository_version,
-        evidence_type="GIT_FILE",
+        evidence_type=evidence_type,
         locator=EvidenceLocator(
             uri=f"repo://{repository_version.repository_id}/{git_file.path}",
             content_hash=git_file.content_hash,

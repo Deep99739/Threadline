@@ -245,12 +245,40 @@ class Citation(FrozenContract):
 
 
 class ContextItem(FrozenContract):
+    logical_key: NonEmpty
     entity_type: NonEmpty
     entity_id: UUID
     statement: NonEmpty
     epistemic_state: EpistemicState
     selection_reason: NonEmpty
+    authority_reason: NonEmpty
     citations: tuple[Citation, ...]
+
+
+class ContextChangeType(StrEnum):
+    ADDED = "ADDED"
+    REMOVED = "REMOVED"
+    CHANGED = "CHANGED"
+    STALE = "STALE"
+    CONTRADICTED = "CONTRADICTED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+class ContextChange(FrozenContract):
+    logical_key: NonEmpty
+    entity_type: NonEmpty
+    change_type: ContextChangeType
+    reasons: tuple[NonEmpty, ...]
+    before: ContextItem | None = None
+    after: ContextItem | None = None
+
+
+class SemanticContextDiff(FrozenContract):
+    base_context_version_id: UUID
+    target_context_version_id: UUID
+    base_repository_version: RepositoryVersion
+    target_repository_version: RepositoryVersion
+    changes: tuple[ContextChange, ...]
 
 
 class ContextPack(FrozenContract):

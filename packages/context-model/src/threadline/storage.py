@@ -223,8 +223,27 @@ class ThreadlineStore:
                     )
                 )
 
-    def save_context_version(self, context_version: ContextVersion, task_id: UUID) -> None:
+    def save_context_version(
+        self, context_version: ContextVersion, task_id: UUID
+    ) -> ContextVersion:
         with self._sessions.begin() as session:
+            existing_row = session.get(ContextEntityRow, str(context_version.id))
+            if existing_row is not None:
+                if (
+                    existing_row.tenant_id != str(context_version.tenant_id)
+                    or existing_row.workspace_id != str(context_version.workspace_id)
+                    or existing_row.task_id != str(task_id)
+                    or existing_row.entity_type != "context_version"
+                ):
+                    raise PermissionError("context version identifier belongs to another scope")
+                existing = ContextVersion.model_validate(existing_row.payload)
+                if (
+                    existing.root_hash != context_version.root_hash
+                    or existing.repository_version != context_version.repository_version
+                    or existing.config_version != context_version.config_version
+                ):
+                    raise ValueError("context version identifier collision")
+                return existing
             self._merge_entity(
                 session,
                 entity_type="context_version",
@@ -234,6 +253,31 @@ class ThreadlineStore:
                 commit_sha=context_version.repository_version.commit_sha,
                 task_id=task_id,
             )
+        return context_version
+
+    def load_handoff_for_context_version(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        task_id: UUID,
+        context_version_id: UUID,
+    ) -> dict[str, Any]:
+        with self._sessions() as session:
+            row = session.scalar(
+                select(HandoffRow)
+                .where(
+                    HandoffRow.tenant_id == str(tenant_id),
+                    HandoffRow.workspace_id == str(workspace_id),
+                    HandoffRow.task_id == str(task_id),
+                    HandoffRow.context_version_id == str(context_version_id),
+                )
+                .order_by(HandoffRow.created_at.desc())
+                .limit(1)
+            )
+        if row is None:
+            raise LookupError("context version was not found in the authorized task scope")
+        return dict(row.compiled_content)
 
     def save_handoff(self, handoff: Handoff, compiled_content: dict[str, Any]) -> None:
         with self._sessions.begin() as session:

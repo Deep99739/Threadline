@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from mcp import Client
 
 from threadline.demo import (
     DEMO_ACTOR_ID,
@@ -12,6 +13,7 @@ from threadline.demo import (
     run_demo,
 )
 from threadline.demo_continuation import run_agent_b_continuation
+from threadline.mcp_server import create_mcp_server
 from threadline.service import ServiceScope
 from threadline.storage import ThreadlineStore
 
@@ -41,6 +43,19 @@ async def test_agent_b_continues_through_mcp_and_stale_handoff_is_refused(
             scope=scope,
             repository_path=repository,
         )
+        async with Client(
+            create_mcp_server(store, scope, seeded.handoff.context_pack.task_id, repository)
+        ) as client:
+            diff_result = await client.call_tool(
+                "compare_context_versions",
+                {
+                    "task_id": str(seeded.handoff.context_pack.task_id),
+                    "branch": seeded.handoff.context_pack.repository_version.branch,
+                    "commit_sha": proof.resulting_commit,
+                    "base_context_version_id": str(seeded.handoff.context_version.id),
+                    "target_context_version_id": str(proof.final_context_version_id),
+                },
+            )
     finally:
         store.close()
 
@@ -58,3 +73,14 @@ async def test_agent_b_continues_through_mcp_and_stale_handoff_is_refused(
     assert "run_job references:RetryPolicy" in proof.verified_completed_work
     assert "run_job retries_preserve_original_idempotency_key" in proof.verified_completed_work
     assert "2 passed" in proof.test_output
+    diff_payload = diff_result.structured_content
+    assert isinstance(diff_payload, dict)
+    assert diff_payload["status"] == "ok"
+    changes = diff_payload["data"]["changes"]
+    retry_change = next(
+        item for item in changes if item["logical_key"] == "claim:run_job:references:RetryPolicy"
+    )
+    assert retry_change["change_type"] == "CHANGED"
+    assert any(
+        "CONTRADICTED to VERIFIED" in reason for reason in retry_change["reasons"]
+    )

@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from mcp import Client
 
@@ -93,6 +94,7 @@ class ContinuationProof:
     live_drift_refused_before_ingest: bool
     stale_items: tuple[dict[str, Any], ...]
     stale_handoff_refused: bool
+    final_context_version_id: UUID
     final_status: str
     verified_completed_work: tuple[str, ...]
     test_output: str
@@ -106,6 +108,7 @@ class ContinuationProof:
             "live_drift_refused_before_ingest": self.live_drift_refused_before_ingest,
             "stale_items": list(self.stale_items),
             "stale_handoff_refused": self.stale_handoff_refused,
+            "final_context_version_id": str(self.final_context_version_id),
             "final_status": self.final_status,
             "verified_completed_work": list(self.verified_completed_work),
             "test_output": self.test_output,
@@ -309,6 +312,7 @@ async def run_agent_b_continuation(
         live_drift_refused_before_ingest=live_drift_refused_before_ingest,
         stale_items=tuple(item for item in stale_items if isinstance(item, dict)),
         stale_handoff_refused=stale_handoff_refused,
+        final_context_version_id=compiled.context_version.id,
         final_status=final_status,
         verified_completed_work=tuple(str(item) for item in verified_completed_work),
         test_output=test_output,

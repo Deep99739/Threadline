@@ -38,7 +38,8 @@ slice:
 - deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
-- six scope-bound, read-only MCP tools proven through a real stdio client;
+- seven scope-bound, read-only MCP tools proven through a real stdio client;
+- deterministic typed source precedence and semantic context-version comparison;
 - live working-tree and branch-head drift detection on every MCP read;
 - stale-handoff refusal with source-level invalidation reasons after the branch head moves;
 - an official MCP Agent B client that performs the expected continuation, commits it, and
@@ -171,7 +172,7 @@ abstention, and a moved branch head remains stale until Threadline synchronizes 
 handoff.
 
 The demo command seeds and compiles a real unfinished-task handoff. `make mcp-check` then starts
-Threadline over stdio, connects with the official MCP client, discovers six read-only tools, and
+Threadline over stdio, connects with the official MCP client, discovers seven read-only tools, and
 verifies an exact-commit response with citations, unknowns, and conflicts. To keep the synthetic
 demo server open for another local client, run:
 

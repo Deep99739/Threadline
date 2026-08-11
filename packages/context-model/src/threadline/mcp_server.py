@@ -11,6 +11,7 @@ from mcp.types import ToolAnnotations
 
 from threadline.git_repository import GitWorkingState, read_git_working_state
 from threadline.models import ContextSnapshot
+from threadline.semantic_diff import compare_context_versions as build_context_diff
 from threadline.service import ServiceScope
 from threadline.staleness import handoff_repository_version, stale_context_items
 from threadline.storage import ThreadlineStore
@@ -225,6 +226,46 @@ def create_mcp_server(
         )
 
     @server.tool(annotations=READ_ONLY, structured_output=True)
+    def compare_context_versions(
+        task_id: UUID,
+        branch: str,
+        commit_sha: str,
+        base_context_version_id: UUID,
+        target_context_version_id: UUID,
+    ) -> dict[str, Any]:
+        """Classify semantic changes between two authorized immutable context versions."""
+
+        snapshot, content = load(task_id)
+        warning = _version_warning(
+            snapshot,
+            content,
+            branch,
+            commit_sha,
+            working_state(),
+        )
+        if warning is not None:
+            return _envelope(snapshot, content, status="abstained", data={}, warnings=[warning])
+        base = store.load_handoff_for_context_version(
+            tenant_id=scope.tenant_id,
+            workspace_id=scope.workspace_id,
+            task_id=task_id,
+            context_version_id=base_context_version_id,
+        )
+        target = store.load_handoff_for_context_version(
+            tenant_id=scope.tenant_id,
+            workspace_id=scope.workspace_id,
+            task_id=task_id,
+            context_version_id=target_context_version_id,
+        )
+        semantic_diff = build_context_diff(base, target)
+        return _envelope(
+            snapshot,
+            content,
+            status="ok",
+            data=semantic_diff.model_dump(mode="json"),
+        )
+
+    @server.tool(annotations=READ_ONLY, structured_output=True)
     def trace_decision(
         task_id: UUID, branch: str, commit_sha: str, decision_key: str
     ) -> dict[str, Any]:
@@ -319,10 +360,12 @@ def create_mcp_server(
             content,
             status="ok",
             data={
+                "logical_key": selected["logical_key"],
                 "entity_id": selected["entity_id"],
                 "entity_type": selected["entity_type"],
                 "epistemic_state": selected["epistemic_state"],
                 "selection_reason": selected["selection_reason"],
+                "authority_reason": selected["authority_reason"],
                 "ranker_version": content["context_pack"]["config_version"],
                 "citations": selected["citations"],
             },

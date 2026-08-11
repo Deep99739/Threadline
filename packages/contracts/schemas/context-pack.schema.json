@@ -72,14 +72,17 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "logical_key",
         "entity_type",
         "entity_id",
         "statement",
         "epistemic_state",
         "selection_reason",
+        "authority_reason",
         "citations"
       ],
       "properties": {
+        "logical_key": {"type": "string", "minLength": 1},
         "entity_type": {"type": "string", "minLength": 1},
         "entity_id": {"type": "string", "format": "uuid"},
         "statement": {"type": "string", "minLength": 1},
@@ -96,6 +99,7 @@
           ]
         },
         "selection_reason": {"type": "string", "minLength": 1},
+        "authority_reason": {"type": "string", "minLength": 1},
         "citations": {"type": "array", "items": {"$ref": "#/$defs/citation"}}
       }
     }

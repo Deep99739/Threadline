@@ -31,7 +31,7 @@ async def verify() -> None:
     version = snapshot.repository_version
     parameters = StdioServerParameters(
         command=str(ROOT / ".venv" / "bin" / "threadline"),
-        args=["mcp", "--database-url", database_url],
+        args=["mcp", "--demo", "--database-url", database_url],
         cwd=ROOT,
     )
     async with (

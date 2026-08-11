@@ -1,8 +1,7 @@
-"""Local Git ingestion into a validated Threadline context snapshot."""
+"""Manifest-driven Git ingestion into a validated Threadline context snapshot."""
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -12,32 +11,35 @@ from threadline.git_repository import (
     evidence_from_git_file,
     read_git_snapshot,
 )
+from threadline.manifest import (
+    IdempotencyVerifierManifest,
+    ProjectManifest,
+    PythonCallPathVerifierManifest,
+    PythonSymbolVerifierManifest,
+    TestReportVerifierManifest,
+    VerifierManifest,
+    manifest_from_git_snapshot,
+)
 from threadline.models import (
-    ActorType,
     Constraint,
     ContextEdge,
     ContextSnapshot,
     Decision,
     EdgeType,
-    EpistemicState,
+    Evidence,
     Observation,
     Task,
     utc_now,
 )
 from threadline.storage import ThreadlineStore
 from threadline.verifiers import (
+    ClaimVerifier,
     IdempotencyBehaviorVerifier,
     PythonCallPathVerifier,
     PythonSymbolExistsVerifier,
     TestReportScopeVerifier,
     VerificationContext,
 )
-
-TASK_PATH = "threadline/task.json"
-DECISION_PATH = "threadline/decision.json"
-OBSERVATIONS_PATH = "threadline/observations.json"
-TEST_REPORT_PATH = "threadline/test-report.json"
-CODE_PATH = "src/job_runner.py"
 
 
 @dataclass(frozen=True)
@@ -46,11 +48,33 @@ class IngestionResult:
     git_snapshot: GitSnapshot
 
 
-def _required_file(git_snapshot: GitSnapshot, path: str) -> str:
-    file_by_path = {item.path: item for item in git_snapshot.files}
-    if path not in file_by_path:
-        raise ValueError(f"required demo evidence is missing: {path}")
-    return file_by_path[path].content
+def _required_evidence(
+    evidence_by_path: dict[str, Evidence], path: str
+) -> Evidence:
+    if path not in evidence_by_path:
+        raise ValueError(f"manifest evidence is missing from the committed snapshot: {path}")
+    return evidence_by_path[path]
+
+
+def _verifier(specification: VerifierManifest) -> ClaimVerifier:
+    if isinstance(specification, PythonSymbolVerifierManifest):
+        return PythonSymbolExistsVerifier(specification.path, specification.symbol)
+    if isinstance(specification, PythonCallPathVerifierManifest):
+        return PythonCallPathVerifier(
+            specification.path,
+            specification.caller,
+            specification.referenced_symbol,
+        )
+    if isinstance(specification, TestReportVerifierManifest):
+        return TestReportScopeVerifier(specification.path)
+    if isinstance(specification, IdempotencyVerifierManifest):
+        return IdempotencyBehaviorVerifier(
+            specification.code_path,
+            specification.decision_path,
+            specification.integration_test_path,
+            specification.test_report_path,
+        )
+    raise TypeError(f"unsupported verifier manifest: {type(specification).__name__}")
 
 
 def ingest_local_repository(
@@ -63,6 +87,7 @@ def ingest_local_repository(
     repository_id: UUID,
 ) -> IngestionResult:
     git_snapshot = read_git_snapshot(path, repository_id)
+    manifest: ProjectManifest = manifest_from_git_snapshot(git_snapshot)
     file_by_path = {item.path: item for item in git_snapshot.files}
     evidence_by_path = {
         item.path: evidence_from_git_file(
@@ -74,47 +99,53 @@ def ingest_local_repository(
         )
         for item in git_snapshot.files
     }
-    task_data = json.loads(_required_file(git_snapshot, TASK_PATH))
+    manifest_evidence = evidence_by_path["threadline.json"]
     task = Task(
-        id=UUID(task_data["task_id"]),
+        id=manifest.task.id,
         tenant_id=tenant_id,
         workspace_id=workspace_id,
         created_by=actor_id,
         repository_version=git_snapshot.repository_version,
-        objective=task_data["objective"],
-        status=task_data["status"],
+        objective=manifest.task.objective,
+        status=manifest.task.status,
         owner_actor_id=actor_id,
+        next_action=manifest.task.next_action,
+        evidence_ids=(manifest_evidence.id,),
     )
 
-    decision_data = json.loads(_required_file(git_snapshot, DECISION_PATH))
-    decision = Decision(
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
-        created_by=actor_id,
-        repository_version=git_snapshot.repository_version,
-        task_id=task.id,
-        decision_key=decision_data["decision_key"],
-        status=decision_data["status"],
-        statement=decision_data["statement"],
-        rationale=decision_data["rationale"],
-        rejected_alternatives=(decision_data["rejected_alternative"],),
-        approved_by=UUID(decision_data["approved_by"]),
-        evidence_ids=(evidence_by_path[DECISION_PATH].id,),
+    decisions = tuple(
+        Decision(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            created_by=actor_id,
+            repository_version=git_snapshot.repository_version,
+            task_id=task.id,
+            decision_key=item.key,
+            status=item.status,
+            statement=item.statement,
+            rationale=item.rationale,
+            rejected_alternatives=item.rejected_alternatives,
+            approved_by=item.approved_by,
+            evidence_ids=(_required_evidence(evidence_by_path, item.source_path).id,),
+        )
+        for item in manifest.decisions
     )
-    constraint = Constraint(
-        tenant_id=tenant_id,
-        workspace_id=workspace_id,
-        created_by=actor_id,
-        repository_version=git_snapshot.repository_version,
-        task_id=task.id,
-        constraint_key="retry-idempotency",
-        statement=decision_data["statement"],
-        severity="HIGH",
-        approved_by=UUID(decision_data["approved_by"]),
-        evidence_ids=(evidence_by_path[DECISION_PATH].id,),
+    constraints = tuple(
+        Constraint(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            created_by=actor_id,
+            repository_version=git_snapshot.repository_version,
+            task_id=task.id,
+            constraint_key=item.key,
+            statement=item.statement,
+            severity=item.severity,
+            approved_by=item.approved_by,
+            evidence_ids=(_required_evidence(evidence_by_path, item.source_path).id,),
+        )
+        for item in manifest.constraints
     )
 
-    observation_data = json.loads(_required_file(git_snapshot, OBSERVATIONS_PATH))
     observations = tuple(
         Observation(
             tenant_id=tenant_id,
@@ -123,13 +154,13 @@ def ingest_local_repository(
             repository_version=git_snapshot.repository_version,
             task_id=task.id,
             session_id=actor_id,
-            actor_type=(ActorType.AGENT if item["actor_type"] == "AGENT" else ActorType.SERVICE),
-            statement=item["statement"],
-            epistemic_state=EpistemicState(item["state"]),
+            actor_type=item.actor_type,
+            statement=item.statement,
+            epistemic_state=item.state,
             observed_at=utc_now(),
-            source_evidence_id=evidence_by_path[OBSERVATIONS_PATH].id,
+            source_evidence_id=_required_evidence(evidence_by_path, item.source_path).id,
         )
-        for item in observation_data
+        for item in manifest.observations
     )
 
     verification_context = VerificationContext(
@@ -143,17 +174,7 @@ def ingest_local_repository(
     )
     verified_claims = tuple(
         verifier.verify(verification_context)
-        for verifier in (
-            PythonSymbolExistsVerifier(CODE_PATH, "RetryPolicy"),
-            PythonCallPathVerifier(CODE_PATH, "run_job", "RetryPolicy"),
-            TestReportScopeVerifier(TEST_REPORT_PATH),
-            IdempotencyBehaviorVerifier(
-                CODE_PATH,
-                DECISION_PATH,
-                "tests/test_retry_policy.py",
-                TEST_REPORT_PATH,
-            ),
-        )
+        for verifier in (_verifier(item) for item in manifest.verifiers)
     )
     claims = tuple(item.claim for item in verified_claims)
     verifications = tuple(
@@ -215,8 +236,8 @@ def ingest_local_repository(
         claims=claims,
         evidence=tuple(evidence_by_path.values()),
         verifications=verifications,
-        decisions=(decision,),
-        constraints=(constraint,),
+        decisions=decisions,
+        constraints=constraints,
         observations=observations,
         edges=tuple(edges),
     )

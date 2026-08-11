@@ -44,6 +44,8 @@ def _citations(retrieved: RetrievedEntity, snapshot: ContextSnapshot) -> tuple[C
 
 
 def _next_action(snapshot: ContextSnapshot) -> str:
+    if snapshot.task.next_action is not None:
+        return snapshot.task.next_action
     call_path_broken = any(
         claim.subject_key == "run_job"
         and claim.predicate == "references:RetryPolicy"

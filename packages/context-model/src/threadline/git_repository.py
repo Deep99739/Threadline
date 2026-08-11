@@ -63,9 +63,19 @@ def _git(root: Path, *arguments: str) -> str:
     return result.stdout.strip()
 
 
-def read_git_snapshot(path: Path, repository_id: UUID) -> GitSnapshot:
+def resolve_git_root(path: Path) -> Path:
+    """Resolve a path to its containing Git root without reading worktree files."""
+
     requested = path.resolve(strict=True)
     root = Path(_git(requested, "rev-parse", "--show-toplevel")).resolve(strict=True)
+    branch = _git(root, "branch", "--show-current")
+    if not branch:
+        raise GitRepositoryError("detached HEAD is not accepted for a continuation task")
+    return root
+
+
+def read_git_snapshot(path: Path, repository_id: UUID) -> GitSnapshot:
+    root = resolve_git_root(path)
     branch = _git(root, "branch", "--show-current")
     if not branch:
         raise GitRepositoryError("detached HEAD is not accepted for a continuation task")

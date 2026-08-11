@@ -63,6 +63,26 @@ def lexical_retrieve(
     query_tokens = _tokens(query)
     candidates: list[RetrievedEntity] = []
 
+    task_statement = " ".join(
+        value
+        for value in (
+            snapshot.task.objective,
+            snapshot.task.next_action or "",
+        )
+        if value
+    )
+    candidates.append(
+        RetrievedEntity(
+            entity_type="task",
+            entity_id=snapshot.task.id,
+            statement=task_statement,
+            state=EpistemicState.ASSERTED,
+            score=_score(query_tokens, task_statement) + 6.0,
+            evidence_ids=snapshot.task.evidence_ids,
+            selection_reason="active task objective and next action from committed configuration",
+        )
+    )
+
     for claim in snapshot.claims:
         statement = _claim_statement(claim)
         score = _score(query_tokens, statement)

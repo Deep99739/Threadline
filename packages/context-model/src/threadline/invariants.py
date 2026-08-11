@@ -97,6 +97,9 @@ def validate_snapshot(snapshot: ContextSnapshot) -> None:
         *(item.id for item in snapshot.edges),
     }
 
+    if not set(snapshot.task.evidence_ids).issubset(evidence_by_id):
+        raise InvariantViolation("task references evidence outside the snapshot")
+
     for claim in snapshot.claims:
         if claim.task_id != snapshot.task.id:
             raise InvariantViolation("claim belongs to a different task")

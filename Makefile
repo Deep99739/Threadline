@@ -44,7 +44,7 @@ web:
 	npm --prefix apps/web run dev
 
 mcp:
-	.venv/bin/threadline mcp
+	.venv/bin/threadline mcp --demo
 
 mcp-check:
 	.venv/bin/python scripts/verify_mcp.py

@@ -219,6 +219,8 @@ class Task(TenantScoped):
     objective: NonEmpty
     status: str
     owner_actor_id: UUID
+    next_action: NonEmpty | None = None
+    evidence_ids: tuple[UUID, ...] = ()
 
 
 class ContextEdge(TenantScoped):

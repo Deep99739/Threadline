@@ -12,6 +12,7 @@ ADRs are immutable once accepted. A later decision supersedes an earlier record 
 | 006 | Tenant/repository authorization before every retrieval path | Accepted |
 | 007 | Lexical baseline before dense retrieval | Accepted |
 | 008 | Local read-only MCP bound to one authorized workspace | Accepted |
+| 009 | Committed repository manifest for local workspace context | Accepted |
 
-ADRs 001–006 were accepted on 2026-08-11; ADRs 007–008 were accepted on 2026-08-12. These
+ADRs 001–006 were accepted on 2026-08-11; ADRs 007–009 were accepted on 2026-08-12. These
 establish the current trust invariants; measurements may cause later superseding ADRs.

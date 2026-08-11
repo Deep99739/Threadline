@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "repository_id": "60000000-0000-4000-8000-000000000004",
+  "task": {
+    "id": "20000000-0000-4000-8000-000000000001",
+    "objective": "Add bounded retries to run_job without changing its idempotency key between attempts.",
+    "status": "IN_PROGRESS",
+    "next_action": "Wire RetryPolicy into run_job while reusing the original idempotency key, then add an integration test and run the complete suite.",
+    "query": "continue retry work without duplicate side effects"
+  },
+  "decisions": [
+    {
+      "key": "retry-idempotency-v1",
+      "status": "APPROVED",
+      "statement": "Every retry attempt must reuse the original idempotency key.",
+      "rationale": "A new key per attempt can duplicate externally visible side effects.",
+      "rejected_alternatives": [
+        "Generate a new idempotency key for every attempt."
+      ],
+      "approved_by": "20000000-0000-4000-8000-000000000002",
+      "source_path": "threadline/decision.json"
+    }
+  ],
+  "constraints": [
+    {
+      "key": "retry-idempotency",
+      "statement": "Every retry attempt must reuse the original idempotency key.",
+      "severity": "HIGH",
+      "approved_by": "20000000-0000-4000-8000-000000000002",
+      "source_path": "threadline/decision.json"
+    }
+  ],
+  "observations": [
+    {
+      "actor_type": "AGENT",
+      "statement": "Implemented retries and all tests pass.",
+      "state": "ASSERTED",
+      "source_path": "threadline/observations.json"
+    },
+    {
+      "actor_type": "SERVICE",
+      "statement": "One focused RetryPolicy unit test passed.",
+      "state": "OBSERVED",
+      "source_path": "threadline/observations.json"
+    }
+  ],
+  "verifiers": [
+    {
+      "kind": "python_symbol_exists",
+      "path": "src/job_runner.py",
+      "symbol": "RetryPolicy"
+    },
+    {
+      "kind": "python_call_path",
+      "path": "src/job_runner.py",
+      "caller": "run_job",
+      "referenced_symbol": "RetryPolicy"
+    },
+    {
+      "kind": "test_report_scope",
+      "path": "threadline/test-report.json"
+    },
+    {
+      "kind": "idempotency_behavior",
+      "code_path": "src/job_runner.py",
+      "decision_path": "threadline/decision.json",
+      "integration_test_path": "tests/test_retry_policy.py",
+      "test_report_path": "threadline/test-report.json"
+    }
+  ]
+}

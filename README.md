@@ -30,8 +30,11 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- eight architecture decision records and a threat model;
+- nine architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
+- a strict, committed `threadline.json` contract for arbitrary local repositories;
+- explicit `init` and `sync` commands with refusal of uncommitted context configuration;
+- a zero-key, repository-private SQLite path for single-user local adoption;
 - deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
@@ -112,10 +115,38 @@ Stop local services:
 make local-down
 ```
 
+## Use Threadline on a real repository
+
+The synthetic demo is not the product boundary. After installing this checkout, initialize context
+inside any existing Git repository:
+
+```bash
+/path/to/threadline/.venv/bin/threadline init /path/to/your-repository \
+  --objective "What the current task must accomplish" \
+  --next-action "The next concrete action another engineer should take"
+```
+
+Review the generated `threadline.json`, then commit it. Threadline refuses to sync an uncommitted
+manifest because an agent should never receive task context that cannot be tied to the same Git
+commit as its evidence.
+
+```bash
+git add threadline.json
+git commit -m "Add Threadline project context"
+/path/to/threadline/.venv/bin/threadline sync .
+/path/to/threadline/.venv/bin/threadline mcp --repository .
+```
+
+This local repository flow requires no API key and no separately provisioned database. It writes
+derived state to the ignored `.threadline/threadline.db` SQLite file. The committed manifest starts
+with task context only; it does not invent verified claims. Add deterministic verifier entries only
+for claims that the repository can actually prove. PostgreSQL remains available through
+`THREADLINE_DATABASE_URL` for shared or deployed environments.
+
 The demo command seeds and compiles a real unfinished-task handoff. `make mcp-check` then starts
 Threadline over stdio, connects with the official MCP client, discovers five read-only tools, and
-verifies an exact-commit response with citations, unknowns, and conflicts. To keep the server open
-for another local client, run:
+verifies an exact-commit response with citations, unknowns, and conflicts. To keep the synthetic
+demo server open for another local client, run:
 
 ```bash
 make mcp

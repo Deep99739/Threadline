@@ -113,6 +113,20 @@ async def _verify_mcp(repository: Path) -> dict[str, Any]:
         if context_result.is_error or context_result.structured_content is None:
             raise RuntimeError("Clean-clone MCP task-context call failed")
         context = context_result.structured_content
+        graph_result = await session.call_tool(
+            "trace_code_symbol",
+            {
+                "task_id": workspace["data"]["task_id"],
+                "branch": workspace["repository"]["branch"],
+                "commit_sha": workspace["repository"]["commit"],
+                "symbol": "parser.parse",
+                "max_depth": 1,
+                "max_nodes": 10,
+            },
+        )
+        if graph_result.is_error or graph_result.structured_content is None:
+            raise RuntimeError("Clean-clone MCP code graph call failed")
+        graph = graph_result.structured_content
         return {
             "server": initialized.server_info.name,
             "tool_count": len(tools.tools),
@@ -120,6 +134,8 @@ async def _verify_mcp(repository: Path) -> dict[str, Any]:
             "handoff_current": workspace["data"]["handoff_current"],
             "context_status": context["status"],
             "citation_count": len(context["citations"]),
+            "graph_node_count": len(graph["data"]["nodes"]),
+            "graph_citation_count": len(graph["citations"]),
         }
 
 
@@ -210,8 +226,10 @@ def _verify_clean_clone() -> None:
             raise RuntimeError("Threadline dirtied the clean-clone user repository")
         if not (repository / ".git" / "threadline" / "threadline.db").is_file():
             raise RuntimeError("Repository-private SQLite state was not created")
-        if not mcp["handoff_current"] or mcp["tool_count"] != 7:
+        if not mcp["handoff_current"] or mcp["tool_count"] != 8:
             raise RuntimeError("Clean-clone MCP proof returned incomplete state")
+        if not mcp["graph_node_count"] or not mcp["graph_citation_count"]:
+            raise RuntimeError("Clean-clone graph proof returned no cited symbols")
 
         print(
             json.dumps(

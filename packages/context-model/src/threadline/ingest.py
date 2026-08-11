@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid5
 
+from threadline.code_graph import CODE_GRAPH_NAMESPACE, extract_code_graph
 from threadline.git_repository import (
     GitSnapshot,
     evidence_from_git_file,
@@ -180,6 +181,15 @@ def ingest_local_repository(
     verifications = tuple(
         item.verification for item in verified_claims if item.verification is not None
     )
+    code_graph = extract_code_graph(
+        git_snapshot.files,
+        evidence_by_path,
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        task_id=task.id,
+        repository_version=git_snapshot.repository_version,
+    )
 
     edges: list[ContextEdge] = []
     for claim in claims:
@@ -227,6 +237,26 @@ def ingest_local_repository(
                 source_evidence_id=verification.evidence_ids[0],
             )
         )
+    symbol_by_key = {item.logical_key: item for item in code_graph.symbols}
+    for dependency in code_graph.dependencies:
+        if dependency.target_symbol_key is None:
+            continue
+        source = symbol_by_key[dependency.source_symbol_key]
+        target = symbol_by_key[dependency.target_symbol_key]
+        edges.append(
+            ContextEdge(
+                id=uuid5(CODE_GRAPH_NAMESPACE, f"edge:{dependency.id}"),
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                created_by=actor_id,
+                from_type="code_symbol",
+                from_id=source.id,
+                edge_type=EdgeType(dependency.dependency_kind.value),
+                to_type="code_symbol",
+                to_id=target.id,
+                source_evidence_id=dependency.evidence_id,
+            )
+        )
 
     snapshot = ContextSnapshot(
         tenant_id=tenant_id,
@@ -239,6 +269,9 @@ def ingest_local_repository(
         decisions=decisions,
         constraints=constraints,
         observations=observations,
+        code_symbols=code_graph.symbols,
+        code_dependencies=code_graph.dependencies,
+        code_parse_diagnostics=code_graph.diagnostics,
         edges=tuple(edges),
     )
     store.save_repository(

@@ -30,6 +30,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sess
 from threadline.invariants import validate_snapshot
 from threadline.models import (
     Claim,
+    CodeDependency,
+    CodeParseDiagnostic,
+    CodeSymbol,
     Constraint,
     ContextEdge,
     ContextSnapshot,
@@ -131,6 +134,9 @@ ENTITY_MODELS: dict[str, type[BaseModel]] = {
     "decision": Decision,
     "constraint": Constraint,
     "observation": Observation,
+    "code_symbol": CodeSymbol,
+    "code_dependency": CodeDependency,
+    "code_parse_diagnostic": CodeParseDiagnostic,
     "edge": ContextEdge,
     "context_version": ContextVersion,
 }
@@ -199,6 +205,9 @@ class ThreadlineStore:
             *(("decision", item) for item in snapshot.decisions),
             *(("constraint", item) for item in snapshot.constraints),
             *(("observation", item) for item in snapshot.observations),
+            *(("code_symbol", item) for item in snapshot.code_symbols),
+            *(("code_dependency", item) for item in snapshot.code_dependencies),
+            *(("code_parse_diagnostic", item) for item in snapshot.code_parse_diagnostics),
             *(("edge", item) for item in snapshot.edges),
         )
         with self._sessions.begin() as session:
@@ -337,6 +346,13 @@ class ThreadlineStore:
             decisions=tuple(_typed(grouped.get("decision", []), Decision)),
             constraints=tuple(_typed(grouped.get("constraint", []), Constraint)),
             observations=tuple(_typed(grouped.get("observation", []), Observation)),
+            code_symbols=tuple(_typed(grouped.get("code_symbol", []), CodeSymbol)),
+            code_dependencies=tuple(
+                _typed(grouped.get("code_dependency", []), CodeDependency)
+            ),
+            code_parse_diagnostics=tuple(
+                _typed(grouped.get("code_parse_diagnostic", []), CodeParseDiagnostic)
+            ),
             edges=tuple(_typed(grouped.get("edge", []), ContextEdge)),
         )
         validate_snapshot(snapshot)

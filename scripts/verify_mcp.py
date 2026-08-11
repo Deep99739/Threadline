@@ -48,6 +48,7 @@ async def verify() -> None:
             "get_task_context",
             "get_workspace_status",
             "list_stale_context",
+            "trace_code_symbol",
             "trace_decision",
         }
         if tool_names != expected_tools:
@@ -79,9 +80,26 @@ async def verify() -> None:
         if content["repository"]["commit"] != version.commit_sha:
             raise RuntimeError("The MCP response is not bound to the active commit")
 
+        graph_result = await session.call_tool(
+            "trace_code_symbol",
+            {
+                "task_id": str(DEMO_TASK_ID),
+                "branch": version.branch,
+                "commit_sha": version.commit_sha,
+                "symbol": "src.job_runner.RetryPolicy.delays",
+                "max_depth": 1,
+                "max_nodes": 10,
+            },
+        )
+        if graph_result.is_error or graph_result.structured_content is None:
+            raise RuntimeError("MCP code graph call failed")
+        graph = graph_result.structured_content
+        if not graph["data"]["nodes"] or not graph["citations"]:
+            raise RuntimeError("MCP code graph must return bounded cited nodes")
+
     print(
-        "MCP proof passes: real stdio client, 7 read-only tools, exact commit, "
-        "cited partial handoff."
+        "MCP proof passes: real stdio client, 8 read-only tools, exact commit, "
+        "cited partial handoff and bounded code graph."
     )
 
 

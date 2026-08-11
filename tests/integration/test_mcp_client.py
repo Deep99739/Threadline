@@ -50,6 +50,7 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
             "get_task_context",
             "get_workspace_status",
             "list_stale_context",
+            "trace_code_symbol",
             "trace_decision",
         }
         assert all(
@@ -111,6 +112,24 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         )
         assert current_staleness.structured_content["status"] == "ok"
         assert current_staleness.structured_content["data"]["items"] == []
+
+        graph_result = await client.call_tool(
+            "trace_code_symbol",
+            {
+                "task_id": str(DEMO_TASK_ID),
+                "branch": version.branch,
+                "commit_sha": version.commit_sha,
+                "symbol": "src.job_runner.RetryPolicy.delays",
+                "max_depth": 1,
+                "max_nodes": 10,
+            },
+        )
+        graph = graph_result.structured_content
+        assert graph["status"] == "partial"
+        assert graph["data"]["root_symbol_key"].endswith("RetryPolicy.delays")
+        assert graph["data"]["nodes"]
+        assert graph["data"]["unresolved_relationships"]
+        assert graph["citations"]
 
         decision_result = await client.call_tool(
             "trace_decision",

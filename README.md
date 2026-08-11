@@ -30,7 +30,7 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- eleven architecture decision records and a threat model;
+- thirteen architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
 - a strict, committed `threadline.json` contract for arbitrary local repositories;
 - explicit `init` and `sync` commands with refusal of uncommitted context configuration;
@@ -38,13 +38,17 @@ slice:
 - deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
-- seven scope-bound, read-only MCP tools proven through a real stdio client;
+- eight scope-bound, read-only MCP tools proven through a real stdio client;
 - deterministic typed source precedence and semantic context-version comparison;
+- commit-bound Tree-sitter symbols and typed imports, calls, and construction edges for Python and
+  JavaScript-family repositories;
+- bounded, cited code traversal with explicit parse health and unresolved relationships;
 - live working-tree and branch-head drift detection on every MCP read;
 - stale-handoff refusal with source-level invalidation reasons after the branch head moves;
 - an official MCP Agent B client that performs the expected continuation, commits it, and
   re-verifies the resulting repository state;
 - an executable primary-scenario evaluation with raw baseline outcomes and disclosed limits;
+- an executable lexical-versus-graph ablation with raw relationship evidence and disclosed limits;
 - explicit Alembic migrations and tenant-scoped PostgreSQL storage;
 - a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
 - a read-only HTTP demo surface over that exact compiled handoff;
@@ -54,6 +58,10 @@ slice:
 - a verified local PostgreSQL, Redis, and object-store environment.
 
 No hosted, adoption, accuracy, or production-readiness claim is made yet.
+
+Threadline does not replace a coding agent, a general memory store, or a broad code graph explorer.
+It runs beside the user's existing tool and specializes in one workflow: transferring verified,
+current engineering work between sessions and agents without trusting a free-form summary.
 
 ## Core model
 
@@ -172,7 +180,7 @@ abstention, and a moved branch head remains stale until Threadline synchronizes 
 handoff.
 
 The demo command seeds and compiles a real unfinished-task handoff. `make mcp-check` then starts
-Threadline over stdio, connects with the official MCP client, discovers seven read-only tools, and
+Threadline over stdio, connects with the official MCP client, discovers eight read-only tools, and
 verifies an exact-commit response with citations, unknowns, and conflicts. To keep the synthetic
 demo server open for another local client, run:
 
@@ -186,6 +194,13 @@ full suite, commits the change, proves that the old handoff is stale and refused
 current verified handoff. The raw point-in-time report is retained in
 [`evals/results/phase1-primary.json`](./evals/results/phase1-primary.json). The report deliberately
 marks the LLM-summary baseline unmeasured until a provider, model, and prompt are frozen.
+
+`make phase2-graph-eval` measures the retained code-graph layer on the same synthetic repository.
+The frozen query asks which test constructs `RetryPolicy`. The lexical baseline can retrieve
+relevant evidence but cannot return a typed symbol relationship; the bounded graph returns the
+test-to-class `CONSTRUCTS` edge with exact source citations. The raw point-in-time report is retained
+in [`evals/results/phase2-graph-ablation.json`](./evals/results/phase2-graph-ablation.json). Its
+single synthetic case is not presented as a general accuracy or scale claim.
 
 `make clean-clone-check` exports the committed repository into a temporary clean checkout, creates
 a new virtual environment, installs only the declared runtime dependencies, initializes a separate

@@ -10,6 +10,7 @@ from mcp.server import MCPServer
 from mcp.types import ToolAnnotations
 
 from threadline.git_repository import GitWorkingState, read_git_working_state
+from threadline.graph import trace_code_graph
 from threadline.models import ContextSnapshot
 from threadline.semantic_diff import compare_context_versions as build_context_diff
 from threadline.service import ServiceScope
@@ -411,6 +412,115 @@ def create_mcp_server(
                 "content": evidence_content[evidence_id],
             },
         )
+
+    @server.tool(annotations=READ_ONLY, structured_output=True)
+    def trace_code_symbol(
+        task_id: UUID,
+        branch: str,
+        commit_sha: str,
+        symbol: str,
+        max_depth: int = 2,
+        max_nodes: int = 50,
+    ) -> dict[str, Any]:
+        """Traverse cited code relationships inside strict repository and size bounds."""
+
+        snapshot, content = load(task_id)
+        warning = _version_warning(
+            snapshot,
+            content,
+            branch,
+            commit_sha,
+            working_state(),
+        )
+        if warning is not None:
+            return _envelope(snapshot, content, status="abstained", data={}, warnings=[warning])
+        try:
+            trace = trace_code_graph(
+                snapshot,
+                tenant_id=scope.tenant_id,
+                workspace_id=scope.workspace_id,
+                symbol=symbol,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+            )
+        except (LookupError, ValueError) as exc:
+            return _envelope(
+                snapshot,
+                content,
+                status="abstained",
+                data={},
+                warnings=[str(exc)],
+            )
+
+        paths = {item.path for item in trace.nodes}
+        diagnostics = [
+            item
+            for item in snapshot.code_parse_diagnostics
+            if item.path in paths and item.status.value != "COMPLETE"
+        ]
+        warnings = [
+            f"{item.path} was only {item.status.value.lower()}: {item.message}"
+            for item in diagnostics
+        ]
+        if trace.truncated:
+            warnings.append(
+                f"Traversal was bounded at depth {trace.max_depth} and {trace.max_nodes} nodes."
+            )
+        if trace.unresolved_dependencies:
+            warnings.append(
+                "Some external or ambiguous dependencies remain unresolved and were not guessed."
+            )
+        response = _envelope(
+            snapshot,
+            content,
+            status="partial" if warnings else "ok",
+            data={
+                "root_symbol_key": trace.root.logical_key,
+                "nodes": [
+                    {
+                        "logical_key": item.logical_key,
+                        "qualified_name": item.qualified_name,
+                        "kind": item.symbol_kind.value,
+                        "language": item.language,
+                        "path": item.path,
+                        "line_start": item.line_start,
+                        "line_end": item.line_end,
+                    }
+                    for item in trace.nodes
+                ],
+                "relationships": [
+                    {
+                        "kind": item.dependency_kind.value,
+                        "source_symbol_key": item.source_symbol_key,
+                        "target_symbol_key": item.target_symbol_key,
+                        "target_name": item.target_name,
+                        "path": item.path,
+                        "line_start": item.line_start,
+                        "line_end": item.line_end,
+                    }
+                    for item in trace.dependencies
+                ],
+                "unresolved_relationships": [
+                    {
+                        "kind": item.dependency_kind.value,
+                        "source_symbol_key": item.source_symbol_key,
+                        "target_name": item.target_name,
+                        "path": item.path,
+                        "line_start": item.line_start,
+                        "line_end": item.line_end,
+                    }
+                    for item in trace.unresolved_dependencies
+                ],
+                "bounds": {
+                    "max_depth": trace.max_depth,
+                    "max_nodes": trace.max_nodes,
+                    "truncated": trace.truncated,
+                },
+            },
+            warnings=warnings,
+        )
+        response["citations"] = [item.model_dump(mode="json") for item in trace.citations]
+        return response
 
     @server.tool(annotations=READ_ONLY, structured_output=True)
     def list_stale_context(task_id: UUID, branch: str, commit_sha: str) -> dict[str, Any]:

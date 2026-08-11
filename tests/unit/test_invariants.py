@@ -19,14 +19,18 @@ from tests.unit.test_models import (
 from threadline.invariants import InvariantViolation, validate_snapshot
 from threadline.models import (
     ActorType,
+    CodeDependency,
+    CodeSymbol,
     Constraint,
     ContextEdge,
     Decision,
+    DependencyKind,
     EdgeType,
     EpistemicState,
     EvidenceRelation,
     Observation,
     RepositoryVersion,
+    SymbolKind,
     VerificationResult,
 )
 
@@ -99,6 +103,52 @@ def test_cross_tenant_entity_is_rejected() -> None:
 
     with pytest.raises(InvariantViolation, match="cross-tenant"):
         validate_snapshot(snapshot(evidence_items=(foreign,), claims=(), verifications=()))
+
+
+def test_cross_tenant_code_symbol_is_rejected() -> None:
+    current = snapshot()
+    symbol = CodeSymbol(
+        tenant_id=uuid4(),
+        workspace_id=WORKSPACE,
+        created_by=current.task.created_by,
+        repository_version=current.repository_version,
+        task_id=current.task.id,
+        logical_key="symbol:worker.py:worker.run",
+        language="python",
+        path="worker.py",
+        qualified_name="worker.run",
+        symbol_kind=SymbolKind.FUNCTION,
+        line_start=1,
+        line_end=2,
+        evidence_id=current.evidence[0].id,
+    )
+
+    with pytest.raises(InvariantViolation, match="cross-tenant"):
+        validate_snapshot(current.model_copy(update={"code_symbols": (symbol,)}))
+
+
+def test_code_dependency_cannot_reference_missing_symbol() -> None:
+    current = snapshot()
+    dependency = CodeDependency(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        created_by=current.task.created_by,
+        repository_version=current.repository_version,
+        task_id=current.task.id,
+        logical_key="dependency:missing:CALLS:helper",
+        source_symbol_key="symbol:missing.py:missing",
+        target_name="helper",
+        dependency_kind=DependencyKind.CALLS,
+        path="missing.py",
+        line_start=1,
+        line_end=1,
+        evidence_id=current.evidence[0].id,
+    )
+
+    with pytest.raises(InvariantViolation, match="dependency source"):
+        validate_snapshot(
+            current.model_copy(update={"code_dependencies": (dependency,)})
+        )
 
 
 def test_task_repository_version_must_match() -> None:

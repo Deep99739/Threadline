@@ -84,6 +84,28 @@ class EdgeType(StrEnum):
     REJECTED_IN_FAVOR_OF = "REJECTED_IN_FAVOR_OF"
     VISIBLE_TO = "VISIBLE_TO"
     VALID_AT = "VALID_AT"
+    CALLS = "CALLS"
+    CONSTRUCTS = "CONSTRUCTS"
+    IMPORTS = "IMPORTS"
+
+
+class SymbolKind(StrEnum):
+    MODULE = "MODULE"
+    CLASS = "CLASS"
+    FUNCTION = "FUNCTION"
+    METHOD = "METHOD"
+
+
+class DependencyKind(StrEnum):
+    CALLS = "CALLS"
+    CONSTRUCTS = "CONSTRUCTS"
+    IMPORTS = "IMPORTS"
+
+
+class ParseStatus(StrEnum):
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
 
 
 class FrozenContract(BaseModel):
@@ -214,6 +236,57 @@ class Observation(TenantScoped):
     source_evidence_id: UUID | None = None
 
 
+class CodeSymbol(TenantScoped):
+    repository_version: RepositoryVersion
+    task_id: UUID
+    logical_key: NonEmpty
+    language: NonEmpty
+    path: NonEmpty
+    qualified_name: NonEmpty
+    symbol_kind: SymbolKind
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    evidence_id: UUID
+
+    @model_validator(mode="after")
+    def line_range_is_ordered(self) -> Self:
+        if self.line_end < self.line_start:
+            raise ValueError("line_end must be greater than or equal to line_start")
+        return self
+
+
+class CodeDependency(TenantScoped):
+    repository_version: RepositoryVersion
+    task_id: UUID
+    logical_key: NonEmpty
+    source_symbol_key: NonEmpty
+    target_name: NonEmpty
+    target_symbol_key: str | None = None
+    dependency_kind: DependencyKind
+    path: NonEmpty
+    line_start: int = Field(ge=1)
+    line_end: int = Field(ge=1)
+    evidence_id: UUID
+
+    @model_validator(mode="after")
+    def line_range_is_ordered(self) -> Self:
+        if self.line_end < self.line_start:
+            raise ValueError("line_end must be greater than or equal to line_start")
+        return self
+
+
+class CodeParseDiagnostic(TenantScoped):
+    repository_version: RepositoryVersion
+    task_id: UUID
+    logical_key: NonEmpty
+    language: NonEmpty
+    path: NonEmpty
+    status: ParseStatus
+    error_lines: tuple[int, ...] = ()
+    message: NonEmpty
+    evidence_id: UUID
+
+
 class Task(TenantScoped):
     repository_version: RepositoryVersion
     objective: NonEmpty
@@ -321,4 +394,7 @@ class ContextSnapshot(MutableContract):
     decisions: tuple[Decision, ...] = ()
     constraints: tuple[Constraint, ...] = ()
     observations: tuple[Observation, ...] = ()
+    code_symbols: tuple[CodeSymbol, ...] = ()
+    code_dependencies: tuple[CodeDependency, ...] = ()
+    code_parse_diagnostics: tuple[CodeParseDiagnostic, ...] = ()
     edges: tuple[ContextEdge, ...] = ()

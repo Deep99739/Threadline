@@ -1,4 +1,4 @@
-.PHONY: setup test lint format typecheck contracts foundation-check check local-up local-down migrate demo mcp mcp-check
+.PHONY: setup test lint format typecheck contracts foundation-check check local-up local-down migrate demo api web mcp mcp-check
 
 setup:
 	python3 -m venv .venv
@@ -36,6 +36,12 @@ migrate:
 
 demo:
 	.venv/bin/threadline demo
+
+api:
+	.venv/bin/threadline api
+
+web:
+	npm --prefix apps/web run dev
 
 mcp:
 	.venv/bin/threadline mcp

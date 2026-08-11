@@ -38,11 +38,13 @@ slice:
 - four scope-bound, read-only MCP tools proven through a real stdio client;
 - explicit Alembic migrations and tenant-scoped PostgreSQL storage;
 - a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
+- a read-only HTTP demo surface over that exact compiled handoff;
+- an interactive evidence workbench with state filters, source inspection, and a bundled
+  synthetic fallback;
 - automated lint, type, contract, property, coverage, and structure checks; and
 - a verified local PostgreSQL, Redis, and object-store environment.
 
-The product UI is under development. No hosted, adoption, accuracy, or production-readiness claim
-is made yet.
+No hosted, adoption, accuracy, or production-readiness claim is made yet.
 
 ## Core model
 
@@ -74,6 +76,7 @@ make local-up
 make migrate
 make demo
 make mcp-check
+npm --prefix apps/web install
 ```
 
 Later runs:
@@ -85,6 +88,17 @@ make migrate
 make demo
 make mcp-check
 ```
+
+To run the interactive evidence workbench, keep these in two terminals after `make demo`:
+
+```bash
+make api
+make web
+```
+
+Open `http://localhost:3000`. The website connects to the read-only demo API at
+`http://localhost:8000`; if that API is unavailable, it remains usable as an explicitly labelled
+bundled synthetic snapshot.
 
 Stop local services:
 
@@ -113,6 +127,7 @@ Threadline uses dedicated local host ports so it does not collide with common lo
 ```text
 packages/context-model/   immutable domain contracts and invariants
 packages/contracts/       public JSON Schemas and examples
+apps/web/                 interactive evidence workbench
 evals/                    frozen cases and baseline definitions
 demo/                     deterministic synthetic continuation scenario
 docs/adr/                 architectural decisions and tradeoffs

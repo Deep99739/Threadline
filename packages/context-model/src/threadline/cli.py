@@ -8,6 +8,9 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
+import uvicorn
+
+from threadline.api import create_app
 from threadline.demo import default_demo_repository, prepare_demo_repository, run_demo
 from threadline.mcp_runtime import serve_demo_mcp
 from threadline.migrations import upgrade_database
@@ -35,6 +38,11 @@ def _parser() -> argparse.ArgumentParser:
 
     mcp = subparsers.add_parser("mcp", help="serve the seeded local workspace over stdio")
     mcp.add_argument("--database-url")
+
+    api = subparsers.add_parser("api", help="serve the read-only synthetic demo API")
+    api.add_argument("--database-url")
+    api.add_argument("--host", default="127.0.0.1")
+    api.add_argument("--port", type=int, default=8000)
     return parser
 
 
@@ -56,6 +64,13 @@ def main(arguments: Sequence[str] | None = None) -> None:
         return
     if parsed.command == "mcp":
         serve_demo_mcp(_database_url(parsed.database_url))
+        return
+    if parsed.command == "api":
+        uvicorn.run(
+            create_app(_database_url(parsed.database_url)),
+            host=parsed.host,
+            port=parsed.port,
+        )
         return
 
     result = run_demo(_database_url(parsed.database_url), parsed.repository)

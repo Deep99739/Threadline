@@ -1,0 +1,9 @@
+{
+  "decision_key": "retry-idempotency-v1",
+  "status": "APPROVED",
+  "statement": "Every retry attempt must reuse the original idempotency key.",
+  "rationale": "A new key per attempt can duplicate externally visible side effects.",
+  "rejected_alternative": "Generate a new idempotency key for every attempt.",
+  "approved_by": "20000000-0000-4000-8000-000000000002",
+  "valid_from_commit": "a000001"
+}

@@ -1,0 +1,38 @@
+{
+  "request_id": "10000000-0000-4000-8000-000000000001",
+  "trace_id": "10000000-0000-4000-8000-000000000002",
+  "tenant_id": "10000000-0000-4000-8000-000000000003",
+  "workspace_id": "10000000-0000-4000-8000-000000000004",
+  "task_id": "10000000-0000-4000-8000-000000000005",
+  "repository_version": {
+    "repository_id": "10000000-0000-4000-8000-000000000006",
+    "branch": "feature/retry-jobs",
+    "commit_sha": "aaaaaaa"
+  },
+  "context_version_id": "10000000-0000-4000-8000-000000000007",
+  "config_version": "foundation.v1",
+  "purpose": "continue_task",
+  "token_budget": 2048,
+  "items": [
+    {
+      "entity_type": "constraint",
+      "entity_id": "10000000-0000-4000-8000-000000000008",
+      "statement": "A retry must reuse the original idempotency key.",
+      "epistemic_state": "VERIFIED",
+      "selection_reason": "Approved invariant for the active task.",
+      "citations": [
+        {
+          "evidence_id": "10000000-0000-4000-8000-000000000009",
+          "locator": {
+            "uri": "repo://threadline-demo/decisions/idempotency.json",
+            "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "line_start": 1,
+            "line_end": 8
+          }
+        }
+      ]
+    }
+  ],
+  "unknowns": ["The complete test suite has not run at this commit."],
+  "conflicts": ["The README says retries are active, but the runner bypasses RetryPolicy."]
+}

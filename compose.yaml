@@ -1,0 +1,50 @@
+name: threadline
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: threadline
+      POSTGRES_USER: threadline
+      POSTGRES_PASSWORD: threadline_local
+    ports:
+      - "55432:5432"
+    volumes:
+      - threadline_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U threadline -d threadline"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  object-store:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: threadline_local
+      MINIO_ROOT_PASSWORD: replace_for_nonlocal_use
+    ports:
+      - "59000:9000"
+      - "59001:9001"
+    volumes:
+      - threadline_objects:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  threadline_postgres:
+  threadline_objects:

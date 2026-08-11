@@ -1,0 +1,14 @@
+[
+  {
+    "actor_type": "AGENT",
+    "statement": "Implemented retries and all tests pass.",
+    "state": "ASSERTED",
+    "evidence": []
+  },
+  {
+    "actor_type": "TEST_RUNNER",
+    "statement": "One focused RetryPolicy unit test passed.",
+    "state": "OBSERVED",
+    "evidence": ["threadline/test-report.json"]
+  }
+]

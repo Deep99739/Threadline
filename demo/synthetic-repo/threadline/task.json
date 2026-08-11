@@ -1,0 +1,9 @@
+{
+  "task_id": "20000000-0000-4000-8000-000000000001",
+  "objective": "Add bounded retries to run_job without changing its idempotency key between attempts.",
+  "repository": "threadline-demo",
+  "branch": "feature/retry-jobs",
+  "commit": "a000001",
+  "status": "IN_PROGRESS",
+  "expected_next_action": "Connect RetryPolicy to run_job and add an integration test proving key reuse."
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threadline.dev/schemas/context-pack.schema.json",
+  "title": "Threadline context pack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "trace_id",
+    "tenant_id",
+    "workspace_id",
+    "task_id",
+    "repository_version",
+    "context_version_id",
+    "config_version",
+    "purpose",
+    "token_budget",
+    "items",
+    "unknowns",
+    "conflicts"
+  ],
+  "properties": {
+    "request_id": {"type": "string", "format": "uuid"},
+    "trace_id": {"type": "string", "format": "uuid"},
+    "tenant_id": {"type": "string", "format": "uuid"},
+    "workspace_id": {"type": "string", "format": "uuid"},
+    "task_id": {"type": "string", "format": "uuid"},
+    "repository_version": {"$ref": "#/$defs/repositoryVersion"},
+    "context_version_id": {"type": "string", "format": "uuid"},
+    "config_version": {"type": "string", "minLength": 1},
+    "purpose": {"type": "string", "minLength": 1},
+    "token_budget": {"type": "integer", "minimum": 128, "maximum": 100000},
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/contextItem"}
+    },
+    "unknowns": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "conflicts": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "$defs": {
+    "repositoryVersion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_id", "branch", "commit_sha"],
+      "properties": {
+        "repository_id": {"type": "string", "format": "uuid"},
+        "branch": {"type": "string", "minLength": 1},
+        "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{7,64}$"}
+      }
+    },
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri", "content_hash", "line_start", "line_end"],
+      "properties": {
+        "uri": {"type": "string", "minLength": 1},
+        "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "line_start": {"type": ["integer", "null"], "minimum": 1},
+        "line_end": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_id", "locator"],
+      "properties": {
+        "evidence_id": {"type": "string", "format": "uuid"},
+        "locator": {"$ref": "#/$defs/locator"}
+      }
+    },
+    "contextItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity_type",
+        "entity_id",
+        "statement",
+        "epistemic_state",
+        "selection_reason",
+        "citations"
+      ],
+      "properties": {
+        "entity_type": {"type": "string", "minLength": 1},
+        "entity_id": {"type": "string", "format": "uuid"},
+        "statement": {"type": "string", "minLength": 1},
+        "epistemic_state": {
+          "type": "string",
+          "enum": [
+            "ASSERTED",
+            "OBSERVED",
+            "VERIFIED",
+            "CONTRADICTED",
+            "STALE",
+            "SUPERSEDED",
+            "UNKNOWN"
+          ]
+        },
+        "selection_reason": {"type": "string", "minLength": 1},
+        "citations": {"type": "array", "items": {"$ref": "#/$defs/citation"}}
+      }
+    }
+  }
+}

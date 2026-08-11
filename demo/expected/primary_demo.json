@@ -1,0 +1,46 @@
+{
+  "fixture": "demo/synthetic-repo",
+  "repository": "threadline-demo",
+  "branch": "feature/retry-jobs",
+  "commit": "a000001",
+  "claims": [
+    {
+      "claim": "RetryPolicy exists.",
+      "expected_state": "OBSERVED",
+      "required_evidence": ["src/job_runner.py:RetryPolicy"]
+    },
+    {
+      "claim": "run_job uses RetryPolicy.",
+      "expected_state": "CONTRADICTED",
+      "required_evidence": ["src/job_runner.py:run_job"]
+    },
+    {
+      "claim": "All tests pass.",
+      "expected_state": "CONTRADICTED",
+      "required_evidence": ["threadline/test-report.json"]
+    },
+    {
+      "claim": "Retries preserve the original idempotency key.",
+      "expected_state": "UNKNOWN",
+      "required_evidence": ["threadline/decision.json"],
+      "missing_evidence": ["runner integration", "integration test"]
+    }
+  ],
+  "expected_next_action": "Wire RetryPolicy into run_job while reusing the original idempotency key, then run an integration test and the complete suite.",
+  "required_handoff_sections": [
+    "repository version",
+    "objective",
+    "approved constraint",
+    "verified completed work",
+    "contradictions",
+    "unknowns",
+    "next action",
+    "citations"
+  ],
+  "forbidden_behavior": [
+    "claiming the complete suite passed",
+    "claiming retries are wired",
+    "using a new idempotency key per attempt",
+    "citing evidence from another repository or commit"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "commit": "a000001",
+  "suite": "tests/test_retry_policy.py::test_retry_policy_builds_bounded_exponential_delays",
+  "scope": "FOCUSED",
+  "status": "PASSED",
+  "passed": 1,
+  "failed": 0,
+  "does_not_prove": [
+    "RetryPolicy is called by run_job",
+    "all tests pass",
+    "idempotency keys are preserved across retry attempts"
+  ]
+}

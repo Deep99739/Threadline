@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threadline-core"
+version = "0.1.0"
+description = "Governed, versioned engineering context for humans and coding agents"
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+license = { text = "Proprietary - all rights reserved during initial development" }
+authors = [{ name = "Deepak Kumar" }]
+dependencies = [
+  "pydantic>=2.11,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "hypothesis>=6.130,<7",
+  "jsonschema>=4.23,<5",
+  "mypy>=1.15,<2",
+  "pytest>=8.3,<9",
+  "pytest-cov>=6,<7",
+  "ruff>=0.11,<1",
+  "types-jsonschema>=4.23,<5",
+]
+
+[tool.setuptools]
+package-dir = { "" = "packages/context-model/src" }
+
+[tool.setuptools.packages.find]
+where = ["packages/context-model/src"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --cov=threadline --cov-report=term-missing --cov-fail-under=90"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["threadline"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise AssertionError",
+  "raise NotImplementedError",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["packages/context-model/src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["packages/context-model/src", "scripts"]
+plugins = ["pydantic.mypy"]
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+warn_required_dynamic_aliases = true

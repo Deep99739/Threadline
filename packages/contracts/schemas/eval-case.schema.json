@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://threadline.dev/schemas/eval-case.schema.json",
+  "title": "Threadline evaluation case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "case_type", "title", "description", "fixture", "expected", "tags"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^TL-EVAL-[0-9]{3}$"},
+    "case_type": {
+      "type": "string",
+      "enum": [
+        "continuation",
+        "conflict",
+        "freshness",
+        "retrieval",
+        "permission",
+        "injection",
+        "secret",
+        "ingestion",
+        "degraded_mode"
+      ]
+    },
+    "title": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "minLength": 1},
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "branch", "commit", "query", "evidence_refs"],
+      "properties": {
+        "repository": {"type": "string", "minLength": 1},
+        "branch": {"type": "string", "minLength": 1},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{7,64}$"},
+        "query": {"type": "string", "minLength": 1},
+        "evidence_refs": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "caller_scope": {"type": "string", "minLength": 1},
+        "dependency_state": {"type": "string"}
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "next_action",
+        "must_abstain",
+        "required_evidence",
+        "forbidden_evidence"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "ASSERTED",
+            "OBSERVED",
+            "VERIFIED",
+            "CONTRADICTED",
+            "STALE",
+            "SUPERSEDED",
+            "UNKNOWN",
+            "DENIED"
+          ]
+        },
+        "next_action": {"type": "string", "minLength": 1},
+        "must_abstain": {"type": "boolean"},
+        "required_evidence": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        },
+        "forbidden_evidence": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1},
+          "uniqueItems": true
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    }
+  }
+}

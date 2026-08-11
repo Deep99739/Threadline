@@ -28,15 +28,14 @@ test("server-renders the complete Threadline product surface", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Threadline — Evidence-bound engineering handoffs<\/title>/i);
-  assert.match(html, /Resume work with the/);
-  assert.match(html, /truth/);
-  assert.match(html, /Inspect a real handoff/);
+  assert.match(html, /<title>Threadline: Evidence-bound engineering handoffs<\/title>/i);
+  assert.match(html, /Resume engineering work from evidence, not summaries/);
+  assert.match(html, /Inspect the handoff/);
   assert.match(html, /Evidence-ranked context/);
   assert.match(html, /run_job calls RetryPolicy/);
   assert.match(html, /CONTRADICTED/);
   assert.match(html, /The evidence contract/);
-  assert.match(html, /Why I built it/);
+  assert.doesNotMatch(html, /Why I built it/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -44,7 +43,7 @@ test("marks the synthetic fallback honestly", async () => {
   const response = await render();
   const html = await response.text();
 
-  assert.match(html, /This synthetic retry task is intentionally inconsistent/);
+  assert.match(html, /synthetic retry task with deliberately conflicting evidence/);
   assert.match(html, /Checking local evidence/);
   assert.doesNotMatch(html, /99%|thousands of users|production-ready/i);
 });

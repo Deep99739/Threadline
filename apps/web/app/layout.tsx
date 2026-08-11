@@ -14,13 +14,13 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Threadline — Evidence-bound engineering handoffs",
+    default: "Threadline: Evidence-bound engineering handoffs",
     template: "%s · Threadline",
   },
   description:
     "Commit-bound context for humans and coding agents, with verified work, explicit uncertainty, and source-level evidence.",
   openGraph: {
-    title: "Threadline — Resume work with the truth still attached",
+    title: "Threadline: Resume work with source evidence",
     description:
       "A cited engineering handoff bound to the exact task, branch, and commit.",
     type: "website",

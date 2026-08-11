@@ -264,21 +264,16 @@ export function ThreadlineDemo() {
 
       <section className="hero" id="top">
         <div className="hero-copy">
-          <p className="eyebrow">
-            <span className="eyebrow-pulse" aria-hidden="true" />
-            Commit-bound context for engineering agents
-          </p>
-          <h1>
-            Resume work with the <em>truth</em> still attached.
-          </h1>
+          <p className="eyebrow">Versioned engineering context</p>
+          <h1>Resume engineering work from evidence, not summaries.</h1>
           <p className="hero-lede">
-            Threadline turns code, tests, decisions, and prior-agent claims into a
-            cited handoff—so the next human or agent knows what is proven, what is
-            uncertain, and what to do next.
+            Threadline binds code, tests, decisions, and prior claims to one
+            versioned handoff. The next person or agent can see what is proven,
+            what is uncertain, and what should happen next.
           </p>
           <div className="hero-actions">
             <a className="primary-action" href="#workbench">
-              Inspect a real handoff <span aria-hidden="true">→</span>
+              Inspect the handoff <span aria-hidden="true">→</span>
             </a>
             <a className="text-action" href="#architecture">
               See how evidence flows
@@ -287,11 +282,6 @@ export function ThreadlineDemo() {
         </div>
 
         <div className="hero-proof" aria-label="Threadline product principles">
-          <div className="hero-proof-rail" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
           <div className="proof-entry">
             <span>01</span>
             <div>
@@ -317,24 +307,19 @@ export function ThreadlineDemo() {
       </section>
 
       <section className="product-intro" id="product">
-        <p className="section-kicker">The product, not a mock dashboard</p>
+        <p className="section-kicker">Live product</p>
         <div>
-          <h2>A handoff you can interrogate.</h2>
+          <h2>Inspect the work before you continue it.</h2>
           <p>
-            This synthetic retry task is intentionally inconsistent. Threadline
-            catches the gap instead of repeating the previous agent’s confident
-            summary.
+            The demo uses a synthetic retry task with deliberately conflicting
+            evidence. Select a claim, open its source, and see why Threadline
+            blocks an unsafe handoff.
           </p>
         </div>
       </section>
 
       <section className="workbench-frame" id="workbench" aria-label="Threadline demo">
         <div className="workbench-topbar">
-          <div className="window-controls" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
           <div className="workspace-crumbs">
             <span>queue-runner</span>
             <b>/</b>
@@ -535,10 +520,11 @@ export function ThreadlineDemo() {
       <section className="contract-section" id="contract">
         <div className="contract-copy">
           <p className="section-kicker">The evidence contract</p>
-          <h2>Confidence is not a color. It is a provenance state.</h2>
+          <h2>Five states. Five distinct levels of trust.</h2>
           <p>
-            Threadline refuses to collapse everything into “done.” Each state tells
-            the next worker exactly how much trust the current evidence deserves.
+            Threadline does not collapse every claim into “done.” Each state tells
+            the next worker what the evidence supports and where verification is
+            still required.
           </p>
         </div>
         <div className="state-ledger">
@@ -582,15 +568,6 @@ export function ThreadlineDemo() {
             <p>A product UI and scoped MCP tools bound to the exact task and commit.</p>
           </article>
         </div>
-      </section>
-
-      <section className="origin-section">
-        <p>Why I built it</p>
-        <blockquote>
-          “I kept watching coding agents inherit confident summaries while the proof
-          stayed scattered across commits, tests, and chat. Threadline is my attempt
-          to make continuation accountable.”
-        </blockquote>
       </section>
 
       <footer>

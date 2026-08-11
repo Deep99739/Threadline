@@ -18,10 +18,14 @@ from tests.unit.test_models import (
 )
 from threadline.invariants import InvariantViolation, validate_snapshot
 from threadline.models import (
+    ActorType,
+    Constraint,
     ContextEdge,
+    Decision,
     EdgeType,
     EpistemicState,
     EvidenceRelation,
+    Observation,
     RepositoryVersion,
     VerificationResult,
 )
@@ -29,6 +33,65 @@ from threadline.models import (
 
 def test_valid_snapshot_passes() -> None:
     validate_snapshot(snapshot())
+
+
+def test_context_entity_must_belong_to_snapshot_task() -> None:
+    current = snapshot()
+    decision = Decision(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        created_by=current.task.created_by,
+        repository_version=current.repository_version,
+        task_id=uuid4(),
+        decision_key="retry-policy",
+        status="APPROVED",
+        statement="Reuse the original idempotency key.",
+        rationale="Avoid duplicate side effects.",
+    )
+
+    with pytest.raises(InvariantViolation, match="context entity belongs"):
+        validate_snapshot(current.model_copy(update={"decisions": (decision,)}))
+
+
+def test_context_entity_repository_version_must_match() -> None:
+    current = snapshot()
+    other_version = RepositoryVersion(
+        repository_id=current.repository_version.repository_id,
+        branch="other",
+        commit_sha="def5678",
+    )
+    observation = Observation(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        created_by=current.task.created_by,
+        repository_version=other_version,
+        task_id=current.task.id,
+        session_id=uuid4(),
+        actor_type=ActorType.AGENT,
+        statement="Work is complete.",
+        observed_at=NOW,
+    )
+
+    with pytest.raises(InvariantViolation, match="context entity repository version"):
+        validate_snapshot(current.model_copy(update={"observations": (observation,)}))
+
+
+def test_decision_or_constraint_cannot_cite_foreign_evidence() -> None:
+    current = snapshot()
+    constraint = Constraint(
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        created_by=current.task.created_by,
+        repository_version=current.repository_version,
+        task_id=current.task.id,
+        constraint_key="idempotency",
+        statement="Reuse the original idempotency key.",
+        severity="HIGH",
+        evidence_ids=(uuid4(),),
+    )
+
+    with pytest.raises(InvariantViolation, match="context entity references evidence"):
+        validate_snapshot(current.model_copy(update={"constraints": (constraint,)}))
 
 
 def test_cross_tenant_entity_is_rejected() -> None:

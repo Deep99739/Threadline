@@ -19,7 +19,8 @@ Threadline treats a summary as a claim, not as project truth. Material claims re
 
 ## Current status
 
-The repository currently contains the trustworthy foundation:
+The repository currently contains the trustworthy foundation and a working local continuation
+slice:
 
 - strict context-domain contracts;
 - explicit epistemic states;
@@ -29,11 +30,18 @@ The repository currently contains the trustworthy foundation:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- six architecture decision records and a threat model;
+- seven architecture decision records and a threat model;
+- exact-commit Git ingestion for tracked text evidence;
+- deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
+- authorization-scoped lexical retrieval with visible ranking reasons;
+- cited, content-hashed context versions and handoffs;
+- explicit Alembic migrations and tenant-scoped PostgreSQL storage;
+- a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
 - automated lint, type, contract, property, coverage, and structure checks; and
 - a verified local PostgreSQL, Redis, and object-store environment.
 
-The first complete ingestion → verification → retrieval → handoff → MCP workflow is under development. No hosted, adoption, accuracy, or production-readiness claim is made yet.
+The read-only MCP client proof and product UI are under development. No hosted, adoption, accuracy,
+or production-readiness claim is made yet.
 
 ## Core model
 
@@ -62,6 +70,8 @@ First run:
 make setup
 make check
 make local-up
+make migrate
+make demo
 ```
 
 Later runs:
@@ -69,6 +79,8 @@ Later runs:
 ```bash
 make check
 make local-up
+make migrate
+make demo
 ```
 
 Stop local services:
@@ -94,6 +106,7 @@ demo/                     deterministic synthetic continuation scenario
 docs/adr/                 architectural decisions and tradeoffs
 docs/threat-model/        security boundaries and known limitations
 scripts/                  contract and repository quality gates
+infra/migrations/         explicit forward and reverse database migrations
 tests/                    unit, property, and contract tests
 ```
 

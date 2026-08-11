@@ -6,12 +6,12 @@
   "claims": [
     {
       "claim": "RetryPolicy exists.",
-      "expected_state": "OBSERVED",
+      "expected_state": "VERIFIED",
       "required_evidence": ["src/job_runner.py:RetryPolicy"]
     },
     {
       "claim": "run_job uses RetryPolicy.",
-      "expected_state": "CONTRADICTED",
+      "expected_state": "UNKNOWN",
       "required_evidence": ["src/job_runner.py:run_job"]
     },
     {

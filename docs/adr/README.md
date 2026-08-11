@@ -10,5 +10,7 @@ ADRs are immutable once accepted. A later decision supersedes an earlier record 
 | 004 | Deterministic/human verification boundary; LLM proposals only | Accepted |
 | 005 | Claim-type-specific precedence and preserved contradictions | Accepted |
 | 006 | Tenant/repository authorization before every retrieval path | Accepted |
+| 007 | Lexical baseline before dense retrieval | Accepted |
 
-Acceptance date: 2026-08-11. These establish the initial trust invariants; measurements may cause later superseding ADRs.
+ADRs 001–006 were accepted on 2026-08-11; ADR 007 was accepted on 2026-08-12. These
+establish the current trust invariants; measurements may cause later superseding ADRs.

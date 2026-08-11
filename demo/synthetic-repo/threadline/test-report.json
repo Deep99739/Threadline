@@ -5,6 +5,9 @@
   "status": "PASSED",
   "passed": 1,
   "failed": 0,
+  "tested_content_hashes": {
+    "src/job_runner.py": "sha256:fdd02a00d30b6aca27897cd64dd32e47f6b478c3eb689dc09bc6ddd79b7b3b0b"
+  },
   "does_not_prove": [
     "RetryPolicy is called by run_job",
     "all tests pass",

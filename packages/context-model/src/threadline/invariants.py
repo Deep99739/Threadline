@@ -7,9 +7,12 @@ from uuid import UUID
 
 from threadline.models import (
     Claim,
+    Constraint,
     ContextSnapshot,
+    Decision,
     EpistemicState,
     EvidenceRelation,
+    Observation,
     Verification,
     VerificationResult,
 )
@@ -71,6 +74,9 @@ def validate_snapshot(snapshot: ContextSnapshot) -> None:
         *snapshot.claims,
         *snapshot.evidence,
         *snapshot.verifications,
+        *snapshot.decisions,
+        *snapshot.constraints,
+        *snapshot.observations,
         *snapshot.edges,
     )
     _ensure_same_tenant_and_workspace(snapshot.tenant_id, snapshot.workspace_id, all_entities)
@@ -85,6 +91,9 @@ def validate_snapshot(snapshot: ContextSnapshot) -> None:
         *(item.id for item in snapshot.claims),
         *(item.id for item in snapshot.evidence),
         *(item.id for item in snapshot.verifications),
+        *(item.id for item in snapshot.decisions),
+        *(item.id for item in snapshot.constraints),
+        *(item.id for item in snapshot.observations),
         *(item.id for item in snapshot.edges),
     }
 
@@ -106,6 +115,21 @@ def validate_snapshot(snapshot: ContextSnapshot) -> None:
             raise InvariantViolation("verification references a claim outside the snapshot")
         if not set(verification.evidence_ids).issubset(evidence_by_id):
             raise InvariantViolation("verification references evidence outside the snapshot")
+
+    task_entities: tuple[Decision | Constraint | Observation, ...] = (
+        *snapshot.decisions,
+        *snapshot.constraints,
+        *snapshot.observations,
+    )
+    for task_entity in task_entities:
+        if task_entity.task_id != snapshot.task.id:
+            raise InvariantViolation("context entity belongs to a different task")
+        if task_entity.repository_version != snapshot.repository_version:
+            raise InvariantViolation("context entity repository version must match the snapshot")
+        if isinstance(task_entity, Decision | Constraint) and not set(
+            task_entity.evidence_ids
+        ).issubset(evidence_by_id):
+            raise InvariantViolation("context entity references evidence outside the snapshot")
 
     for edge in snapshot.edges:
         if edge.from_id not in entity_ids or edge.to_id not in entity_ids:

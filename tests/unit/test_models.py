@@ -200,7 +200,7 @@ def test_published_evidence_is_immutable() -> None:
     item = evidence()
 
     with pytest.raises(ValidationError, match="frozen"):
-        item.sensitivity = "PUBLIC"
+        item.sensitivity = "PUBLIC"  # type: ignore[misc]
 
 
 def test_strict_contract_rejects_unknown_fields() -> None:

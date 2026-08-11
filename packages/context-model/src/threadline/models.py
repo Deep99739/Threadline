@@ -189,6 +189,7 @@ class Decision(TenantScoped):
     statement: NonEmpty
     rationale: NonEmpty
     approved_by: UUID | None = None
+    evidence_ids: tuple[UUID, ...] = ()
 
 
 class Constraint(TenantScoped):
@@ -198,6 +199,7 @@ class Constraint(TenantScoped):
     statement: NonEmpty
     severity: str
     approved_by: UUID | None = None
+    evidence_ids: tuple[UUID, ...] = ()
 
 
 class Observation(TenantScoped):
@@ -206,6 +208,7 @@ class Observation(TenantScoped):
     session_id: UUID
     actor_type: ActorType
     statement: NonEmpty
+    epistemic_state: EpistemicState = EpistemicState.OBSERVED
     observed_at: datetime
     source_evidence_id: UUID | None = None
 
@@ -284,4 +287,7 @@ class ContextSnapshot(MutableContract):
     claims: tuple[Claim, ...]
     evidence: tuple[Evidence, ...]
     verifications: tuple[Verification, ...]
+    decisions: tuple[Decision, ...] = ()
+    constraints: tuple[Constraint, ...] = ()
+    observations: tuple[Observation, ...] = ()
     edges: tuple[ContextEdge, ...] = ()

@@ -30,9 +30,9 @@ def main() -> None:
     if missing:
         raise SystemExit(f"Missing foundation paths: {', '.join(missing)}")
 
-    adrs = sorted((ROOT / "docs" / "adr").glob("ADR-00[1-6]-*.md"))
-    if len(adrs) != 6:
-        raise SystemExit(f"Expected six foundation ADRs, found {len(adrs)}")
+    adrs = sorted((ROOT / "docs" / "adr").glob("ADR-00[1-7]-*.md"))
+    if len(adrs) != 7:
+        raise SystemExit(f"Expected seven current ADRs, found {len(adrs)}")
 
     cases = _load_cases()
     if not 25 <= len(cases) <= 40:
@@ -57,7 +57,7 @@ def main() -> None:
     if case_types != required_types:
         raise SystemExit(f"Evaluation type coverage mismatch: {sorted(case_types)}")
 
-    print(f"Foundation structure passes: 6 ADRs and {len(cases)} eval cases.")
+    print(f"Foundation structure passes: 7 ADRs and {len(cases)} eval cases.")
 
 
 if __name__ == "__main__":

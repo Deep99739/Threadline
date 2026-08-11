@@ -1,4 +1,4 @@
-.PHONY: setup test lint format typecheck contracts foundation-check check local-up local-down
+.PHONY: setup test lint format typecheck contracts foundation-check check local-up local-down migrate demo
 
 setup:
 	python3 -m venv .venv
@@ -30,3 +30,9 @@ local-up:
 
 local-down:
 	docker-compose down
+
+migrate:
+	.venv/bin/threadline migrate
+
+demo:
+	.venv/bin/threadline demo

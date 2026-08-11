@@ -1,4 +1,4 @@
-.PHONY: setup test lint format typecheck contracts foundation-check check local-up local-down migrate demo api web mcp mcp-check phase1-eval
+.PHONY: setup test lint format typecheck contracts foundation-check check clean-clone-check local-up local-down migrate demo api web mcp mcp-check phase1-eval
 
 setup:
 	python3 -m venv .venv
@@ -24,6 +24,9 @@ foundation-check:
 	.venv/bin/python scripts/check_foundation.py
 
 check: lint typecheck contracts test foundation-check
+
+clean-clone-check:
+	.venv/bin/python scripts/verify_clean_clone.py
 
 local-up:
 	docker-compose up -d --wait

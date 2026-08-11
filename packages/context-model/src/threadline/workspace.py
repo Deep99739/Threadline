@@ -7,8 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid5
 
+from sqlalchemy.engine import make_url
+
 from threadline.compiler import CompiledHandoff
-from threadline.git_repository import GitSnapshot, read_git_snapshot
+from threadline.git_repository import GitSnapshot, read_git_snapshot, threadline_git_state_path
 from threadline.manifest import (
     ProjectManifest,
     manifest_from_git_snapshot,
@@ -68,7 +70,7 @@ def workspace_database_url(workspace: LocalWorkspace, explicit: str | None = Non
     configured = os.getenv("THREADLINE_DATABASE_URL")
     if configured:
         return configured
-    database_path = workspace.repository_path / ".threadline" / "threadline.db"
+    database_path = threadline_git_state_path(workspace.repository_path)
     return f"sqlite+pysqlite:///{database_path}"
 
 
@@ -81,7 +83,9 @@ def sync_local_workspace(
     workspace = load_local_workspace(repository_path)
     resolved_database_url = workspace_database_url(workspace, database_url)
     if resolved_database_url.startswith("sqlite"):
-        (workspace.repository_path / ".threadline").mkdir(parents=True, exist_ok=True)
+        database_name = make_url(resolved_database_url).database
+        if database_name and database_name != ":memory:":
+            Path(database_name).parent.mkdir(parents=True, exist_ok=True)
     upgrade_database(resolved_database_url)
     store = ThreadlineStore(resolved_database_url)
     try:

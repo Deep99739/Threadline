@@ -59,7 +59,9 @@ def _commit_manifest(root: Path) -> None:
 
 def test_workspace_requires_committed_configuration_and_syncs_exact_head(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
     root, task_id = _initialized_repository(tmp_path)
 
     with pytest.raises(ValueError, match="not committed"):
@@ -70,11 +72,12 @@ def test_workspace_requires_committed_configuration_and_syncs_exact_head(
     second = load_local_workspace(root)
     assert first.scope == second.scope
     assert str(first.manifest.task.id) == task_id
-    assert workspace_database_url(first).endswith("/.threadline/threadline.db")
+    assert workspace_database_url(first).endswith("/.git/threadline/threadline.db")
 
     synced = sync_local_workspace(root)
 
-    assert (root / ".threadline" / "threadline.db").is_file()
+    assert (root / ".git" / "threadline" / "threadline.db").is_file()
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
     assert synced.handoff.context_pack.repository_version.commit_sha == git(
         root, "rev-parse", "HEAD"
     )
@@ -189,10 +192,13 @@ def anyio_backend() -> str:
 
 
 @pytest.mark.anyio
-async def test_real_stdio_workspace_server_exposes_committed_task(tmp_path: Path) -> None:
+async def test_real_stdio_workspace_server_exposes_committed_task(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
     root, task_id = _initialized_repository(tmp_path)
     _commit_manifest(root)
-    database_url = f"sqlite+pysqlite:///{tmp_path / 'stdio-workspace.db'}"
     profiles = build_client_profiles(
         root,
         python_executable=PROJECT_ROOT / ".venv" / "bin" / "python",
@@ -200,7 +206,7 @@ async def test_real_stdio_workspace_server_exposes_committed_task(tmp_path: Path
     server = profiles["server"]
     parameters = StdioServerParameters(
         command=server["command"],
-        args=[*server["args"], "--database-url", database_url],
+        args=server["args"],
         cwd=PROJECT_ROOT,
     )
 
@@ -230,3 +236,4 @@ async def test_real_stdio_workspace_server_exposes_committed_task(tmp_path: Path
     assert result.structured_content["citations"][0]["locator"]["uri"].endswith(
         "/threadline.json"
     )
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""

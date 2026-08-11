@@ -13,6 +13,7 @@ from threadline.git_repository import (
     evidence_from_git_file,
     read_git_snapshot,
     read_git_working_state,
+    threadline_git_state_path,
 )
 
 
@@ -82,6 +83,15 @@ def test_reads_live_head_and_dirty_paths(tmp_path: Path) -> None:
     dirty = read_git_working_state(root, repository_id)
 
     assert set(dirty.dirty_paths) == {"new-note.md", "src/job_runner.py"}
+
+
+def test_repository_private_state_path_is_inside_git_metadata(tmp_path: Path) -> None:
+    root = make_demo_repository(tmp_path)
+
+    state_path = threadline_git_state_path(root)
+
+    assert state_path == root / ".git" / "threadline" / "threadline.db"
+    assert state_path.parent.parent == root / ".git"
 
 
 def test_builds_immutable_evidence_locator(tmp_path: Path) -> None:

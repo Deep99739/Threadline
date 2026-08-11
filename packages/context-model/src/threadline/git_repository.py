@@ -81,6 +81,16 @@ def resolve_git_root(path: Path) -> Path:
     return root
 
 
+def threadline_git_state_path(path: Path) -> Path:
+    """Return a repository-private state path that Git never exposes as worktree drift."""
+
+    root = resolve_git_root(path)
+    git_path = Path(_git(root, "rev-parse", "--git-path", "threadline/threadline.db"))
+    if git_path.is_absolute():
+        return git_path.resolve()
+    return (root / git_path).resolve()
+
+
 def read_git_working_state(path: Path, repository_id: UUID) -> GitWorkingState:
     """Read the live branch, HEAD, and dirty paths without trusting a caller-supplied version."""
 

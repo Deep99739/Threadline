@@ -34,7 +34,7 @@ slice:
 - exact-commit Git ingestion for tracked text evidence;
 - a strict, committed `threadline.json` contract for arbitrary local repositories;
 - explicit `init` and `sync` commands with refusal of uncommitted context configuration;
-- a zero-key, repository-private SQLite path for single-user local adoption;
+- a zero-key SQLite path inside Git's private metadata for single-user local adoption;
 - deterministic Python symbol, call-path, test-scope, and evidence-sufficiency verifiers;
 - authorization-scoped lexical retrieval with visible ranking reasons;
 - cited, content-hashed context versions and handoffs;
@@ -85,6 +85,7 @@ make migrate
 make demo
 make mcp-check
 make phase1-eval
+make clean-clone-check
 npm --prefix apps/web install
 ```
 
@@ -97,6 +98,7 @@ make migrate
 make demo
 make mcp-check
 make phase1-eval
+make clean-clone-check
 ```
 
 To run the interactive evidence workbench, keep these in two terminals after `make demo`:
@@ -139,9 +141,10 @@ git commit -m "Add Threadline project context"
 ```
 
 This local repository flow requires no API key and no separately provisioned database. It writes
-derived state to the ignored `.threadline/threadline.db` SQLite file. The committed manifest starts
-with task context only; it does not invent verified claims. Add deterministic verifier entries only
-for claims that the repository can actually prove. PostgreSQL remains available through
+derived state beneath Git's private metadata at `.git/threadline/threadline.db`, so Threadline does
+not dirty the working tree or require a project-wide ignore rule. The committed manifest starts with
+task context only; it does not invent verified claims. Add deterministic verifier entries only for
+claims that the repository can actually prove. PostgreSQL remains available through
 `THREADLINE_DATABASE_URL` for shared or deployed environments.
 
 Print reviewable project profiles for local coding clients:
@@ -182,6 +185,11 @@ full suite, commits the change, proves that the old handoff is stale and refused
 current verified handoff. The raw point-in-time report is retained in
 [`evals/results/phase1-primary.json`](./evals/results/phase1-primary.json). The report deliberately
 marks the LLM-summary baseline unmeasured until a provider, model, and prompt are frozen.
+
+`make clean-clone-check` exports the committed repository into a temporary clean checkout, creates
+a new virtual environment, installs only the declared runtime dependencies, initializes a separate
+Git repository, synchronizes it with the default zero-key database, and connects through a real
+stdio MCP client. The gate also proves that onboarding leaves the user's working tree clean.
 
 Threadline uses dedicated local host ports so it does not collide with common local services:
 

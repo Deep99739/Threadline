@@ -43,3 +43,6 @@ jobs:
 
       - name: Verify repository foundation
         run: python scripts/check_foundation.py
+
+      - name: Verify clean-clone onboarding
+        run: python scripts/verify_clean_clone.py

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -299,8 +300,8 @@ async def test_stdio_process_is_consumed_by_real_client_session(tmp_path: Path) 
     seeded = run_demo(database_url, tmp_path / "demo-repository")
     version = seeded.handoff.context_pack.repository_version
     parameters = StdioServerParameters(
-        command=str(PROJECT_ROOT / ".venv" / "bin" / "threadline"),
-        args=["mcp", "--demo", "--database-url", database_url],
+        command=sys.executable,
+        args=["-m", "threadline", "mcp", "--demo", "--database-url", database_url],
         cwd=PROJECT_ROOT,
     )
 

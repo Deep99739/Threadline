@@ -33,6 +33,7 @@ class VerificationContext:
     task_id: UUID
     repository_version: RepositoryVersion
     files: dict[str, GitFile]
+    content_hashes: dict[str, str]
     evidence_by_path: dict[str, Evidence]
 
 
@@ -243,7 +244,7 @@ class TestReportScopeVerifier:
         report = json.loads(git_file.content)
         tested_hashes = report.get("tested_content_hashes", {})
         hashes_are_current = bool(tested_hashes) and all(
-            path in context.files and context.files[path].content_hash == content_hash
+            context.content_hashes.get(path) == content_hash
             for path, content_hash in tested_hashes.items()
         )
         full_pass = (
@@ -342,7 +343,7 @@ class IdempotencyBehaviorVerifier:
             report = json.loads(report_file.content)
             tested_hashes = report.get("tested_content_hashes", {})
             hashes_are_current = bool(tested_hashes) and all(
-                path in context.files and context.files[path].content_hash == content_hash
+                context.content_hashes.get(path) == content_hash
                 for path, content_hash in tested_hashes.items()
             )
             report_is_full_and_current = (

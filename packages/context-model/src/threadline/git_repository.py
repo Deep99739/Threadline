@@ -179,6 +179,35 @@ def read_git_snapshot(path: Path, repository_id: UUID) -> GitSnapshot:
     )
 
 
+def read_committed_content_hashes(
+    path: Path,
+    *,
+    commit_sha: str,
+    relative_paths: tuple[str, ...],
+) -> dict[str, str]:
+    """Hash selected committed blobs without requiring them to be text evidence."""
+
+    root = resolve_git_root(path)
+    hashes: dict[str, str] = {}
+    for relative_path in dict.fromkeys(relative_paths):
+        process = subprocess.Popen(
+            ["git", "-C", str(root), "show", f"{commit_sha}:{relative_path}"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        if process.stdout is None:  # pragma: no cover - guaranteed by stdout=PIPE
+            process.kill()
+            process.wait()
+            continue
+        digest = hashlib.sha256()
+        while chunk := process.stdout.read(64 * 1024):
+            digest.update(chunk)
+        process.stdout.close()
+        if process.wait(timeout=15) == 0:
+            hashes[relative_path] = f"sha256:{digest.hexdigest()}"
+    return hashes
+
+
 def evidence_from_git_file(
     git_file: GitFile,
     *,

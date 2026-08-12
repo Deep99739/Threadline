@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid5
@@ -11,6 +12,7 @@ from threadline.evidence_safety import path_is_excluded, safe_git_file
 from threadline.git_repository import (
     GitSnapshot,
     evidence_from_git_file,
+    read_committed_content_hashes,
     read_git_snapshot,
 )
 from threadline.manifest import (
@@ -112,6 +114,28 @@ def ingest_local_repository(
         for item in scoped_files
     }
     manifest_evidence = evidence_by_path["threadline.json"]
+    tested_paths: list[str] = []
+    for specification in manifest.verifiers:
+        if not isinstance(specification, TestReportVerifierManifest):
+            continue
+        report_file = file_by_path.get(specification.path)
+        if report_file is None:
+            continue
+        report = json.loads(report_file.content)
+        tested_hashes = report.get("tested_content_hashes", {})
+        if isinstance(tested_hashes, dict):
+            tested_paths.extend(str(item) for item in tested_hashes)
+    committed_hashes = {item.path: item.content_hash for item in scoped_files}
+    missing_hash_paths = tuple(
+        path for path in dict.fromkeys(tested_paths) if path not in committed_hashes
+    )
+    committed_hashes.update(
+        read_committed_content_hashes(
+            git_snapshot.root,
+            commit_sha=git_snapshot.repository_version.commit_sha,
+            relative_paths=missing_hash_paths,
+        )
+    )
     task = Task(
         id=manifest.task.id,
         tenant_id=tenant_id,
@@ -182,6 +206,7 @@ def ingest_local_repository(
         task_id=task.id,
         repository_version=git_snapshot.repository_version,
         files=file_by_path,
+        content_hashes=committed_hashes,
         evidence_by_path=evidence_by_path,
     )
     verified_claims = tuple(

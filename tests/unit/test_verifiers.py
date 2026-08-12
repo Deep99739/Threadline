@@ -58,6 +58,7 @@ def context(*files: GitFile) -> VerificationContext:
         task_id=TASK_ID,
         repository_version=REPOSITORY_VERSION,
         files=by_path,
+        content_hashes={path: item.content_hash for path, item in by_path.items()},
         evidence_by_path=evidence,
     )
 

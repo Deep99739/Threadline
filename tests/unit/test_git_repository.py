@@ -11,6 +11,7 @@ from threadline.git_repository import (
     MAX_TEXT_BYTES,
     GitRepositoryError,
     evidence_from_git_file,
+    read_committed_content_hashes,
     read_git_snapshot,
     read_git_working_state,
     threadline_git_state_path,
@@ -114,3 +115,33 @@ def test_builds_immutable_evidence_locator(tmp_path: Path) -> None:
     assert evidence.created_by == actor_id
     assert evidence.locator.content_hash == source.content_hash
     assert evidence.locator.uri.endswith("/src/job_runner.py")
+
+
+def test_hashes_selected_committed_binary_and_filtered_files(tmp_path: Path) -> None:
+    root = make_demo_repository(tmp_path)
+    (root / "asset.bin").write_bytes(b"\x00\xffthreadline")
+    (root / "ignored.txt").write_text("exact release input", encoding="utf-8")
+    git(root, "add", "asset.bin", "ignored.txt")
+    git(
+        root,
+        "-c",
+        "user.name=Threadline Test",
+        "-c",
+        "user.email=threadline@example.invalid",
+        "commit",
+        "-m",
+        "Add release inputs",
+    )
+
+    hashes = read_committed_content_hashes(
+        root,
+        commit_sha=git(root, "rev-parse", "HEAD"),
+        relative_paths=("asset.bin", "ignored.txt", "missing.bin"),
+    )
+
+    assert hashes == {
+        "asset.bin": f"sha256:{hashlib.sha256((root / 'asset.bin').read_bytes()).hexdigest()}",
+        "ignored.txt": (
+            f"sha256:{hashlib.sha256((root / 'ignored.txt').read_bytes()).hexdigest()}"
+        ),
+    }

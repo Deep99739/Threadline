@@ -16,6 +16,20 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_DB: threadline
+          POSTGRES_USER: threadline
+          POSTGRES_PASSWORD: threadline_local
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U threadline -d threadline"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +54,9 @@ jobs:
 
       - name: Test invariants
         run: python -m pytest
+
+      - name: Verify PostgreSQL migrations and isolation
+        run: python scripts/verify_postgres.py
 
       - name: Verify repository foundation
         run: python scripts/check_foundation.py

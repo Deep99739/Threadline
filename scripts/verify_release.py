@@ -8,6 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GATES = (
     ("backend, contracts, coverage, and foundation", ("make", "check")),
+    ("migrations and tenant boundaries on PostgreSQL", ("make", "postgres-check")),
     ("frontend lint, build, and server-rendered surface", ("make", "web-check")),
     ("installation and real stdio MCP from a clean export", ("make", "clean-clone-check")),
 )

@@ -60,7 +60,9 @@ slice:
 - an interactive evidence workbench with state filters, source inspection, a retained executed
   continuation report, practical client setup, and an explicitly labelled bundled fallback;
 - automated lint, type, contract, property, coverage, and structure checks; and
-- a verified local PostgreSQL, Redis, and object-store environment.
+- a release-gated PostgreSQL path covering migrations, ingestion, cited handoffs, reconnection,
+  and tenant isolation, plus healthy local Redis and object-store services reserved for the
+  shared-deployment path. Redis and object storage are not used by the default local request path.
 
 No hosted, adoption, accuracy, or production-readiness claim is made yet.
 

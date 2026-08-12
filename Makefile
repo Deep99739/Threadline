@@ -1,4 +1,4 @@
-.PHONY: setup test lint format typecheck contracts foundation-check check clean-clone-check local-up local-down migrate demo api web mcp mcp-check phase1-eval phase2-graph-eval
+.PHONY: setup test lint format typecheck contracts foundation-check check clean-clone-check local-up local-down migrate demo api web mcp mcp-check phase1-eval phase2-graph-eval continuation-benchmark
 
 setup:
 	python3 -m venv .venv
@@ -57,3 +57,6 @@ phase1-eval:
 
 phase2-graph-eval:
 	.venv/bin/python scripts/run_phase2_graph_eval.py
+
+continuation-benchmark:
+	.venv/bin/python scripts/run_continuation_benchmark.py

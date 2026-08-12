@@ -1,0 +1,137 @@
+{
+  "report": "threadline-executed-continuation-benchmark-v0.2",
+  "dataset": "executed-synthetic-v0.2",
+  "sample_size": 9,
+  "repository_count": 5,
+  "cases": [
+    {
+      "id": "EXEC-001",
+      "title": "Continue the task through a second MCP agent",
+      "passed": true,
+      "expected": "change, full test, commit, stale refusal, current verified handoff",
+      "observed": "commit changed; full suite passed with 2 tests; old handoff refused; new handoff status ok",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-002",
+      "title": "Reject unsupported all-tests-passed assertion",
+      "passed": true,
+      "expected": "not VERIFIED",
+      "observed": "UNKNOWN",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-003",
+      "title": "Resolve every returned citation in scope",
+      "passed": true,
+      "expected": "6 evidence objects",
+      "observed": "6 evidence objects",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-004",
+      "title": "Abstain on a dirty worktree",
+      "passed": true,
+      "expected": "abstained",
+      "observed": "abstained",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-005",
+      "title": "Abstain after the branch head moves",
+      "passed": true,
+      "expected": "abstained",
+      "observed": "abstained",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-006",
+      "title": "Verify a committed full passing check",
+      "passed": true,
+      "expected": "VERIFIED",
+      "observed": "VERIFIED",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-007",
+      "title": "Contradict completion after a failed full check",
+      "passed": true,
+      "expected": "CONTRADICTED",
+      "observed": "CONTRADICTED",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-008",
+      "title": "Recover the typed test-to-class relationship",
+      "passed": true,
+      "expected": "cited CONSTRUCTS edge",
+      "observed": "2 typed edges and 7 citations",
+      "failure_layer": null
+    },
+    {
+      "id": "EXEC-009",
+      "title": "Deny another task identifier",
+      "passed": true,
+      "expected": "denied or tool error",
+      "observed": "tool error",
+      "failure_layer": null
+    }
+  ],
+  "metrics": {
+    "regression_cases_passed": {
+      "correct": 9,
+      "total": 9,
+      "rate": 1.0
+    },
+    "expected_next_action_accuracy": {
+      "correct": 1,
+      "total": 1,
+      "rate": 1.0
+    },
+    "required_abstention_accuracy": {
+      "correct": 2,
+      "total": 2,
+      "rate": 1.0
+    },
+    "scope_denial_accuracy": {
+      "correct": 1,
+      "total": 1,
+      "rate": 1.0
+    },
+    "unsupported_completion_false_acceptance": {
+      "accepted": 0,
+      "total": 1,
+      "rate": 0.0
+    },
+    "citation_resolution": {
+      "correct": 1,
+      "total": 1,
+      "rate": 1.0
+    }
+  },
+  "baseline_failures": [
+    {
+      "baseline_id": "B0",
+      "name": "latest transcript assertion",
+      "failure_observed": true,
+      "failure": "The latest agent assertion says all tests pass without full evidence."
+    },
+    {
+      "baseline_id": "B2",
+      "name": "lexical evidence only",
+      "failure_observed": true,
+      "failure": "Lexical retrieval returns evidence but not the typed CONSTRUCTS edge."
+    }
+  ],
+  "failure_analysis": [],
+  "limits": [
+    "All cases are deterministic and synthetic.",
+    "Only one expected next-action case and one unsupported-completion case are measured.",
+    "Scope denial is application-layer local isolation, not hosted identity or database RLS.",
+    "No LLM provider, external repository, human reviewer, or proprietary agent client was used.",
+    "Agent B started from synthetic commit 7f52f9202d4b7246bc658b03947e1c735f26e440.",
+    "Passing report covered 1 explicit file.",
+    "Graph lexical baseline returned 9 selected entities."
+  ],
+  "claim_boundary": "Nine deterministic synthetic regression cases; not an external accuracy, adoption, or production claim."
+}

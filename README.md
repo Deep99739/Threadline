@@ -49,6 +49,8 @@ slice:
   re-verifies the resulting repository state;
 - an executable primary-scenario evaluation with raw baseline outcomes and disclosed limits;
 - an executable lexical-versus-graph ablation with raw relationship evidence and disclosed limits;
+- a nine-case executed continuation benchmark covering the MCP Agent B path, unsupported completion,
+  citations, dirty and moved repository refusal, command evidence, graph recovery, and scope denial;
 - explicit Alembic migrations and tenant-scoped PostgreSQL storage;
 - a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
 - a read-only HTTP demo surface over that exact compiled handoff;
@@ -255,6 +257,16 @@ relevant evidence but cannot return a typed symbol relationship; the bounded gra
 test-to-class `CONSTRUCTS` edge with exact source citations. The raw point-in-time report is retained
 in [`evals/results/phase2-graph-ablation.json`](./evals/results/phase2-graph-ablation.json). Its
 single synthetic case is not presented as a general accuracy or scale claim.
+
+`make continuation-benchmark` executes nine synthetic regression cases across five temporary Git
+repositories. The primary case has Agent B consume the handoff through the official MCP client,
+change code, run the full suite, commit, observe refusal of the old handoff, and receive a current
+verified handoff. The remaining cases exercise unsupported completion, citation resolution, dirty
+and moved repository abstention, passing and failing command evidence, typed graph recovery, and
+wrong-task scope denial. Raw per-case outcomes, baseline failures, denominators, and limitations are
+retained in
+[`evals/results/continuation-benchmark-v0.2.json`](./evals/results/continuation-benchmark-v0.2.json).
+This is a deterministic synthetic regression benchmark, not an external accuracy or adoption claim.
 
 `make clean-clone-check` exports the committed repository into a temporary clean checkout, creates
 a new virtual environment, installs only the declared runtime dependencies, initializes a separate

@@ -85,10 +85,10 @@
     "packages/context-model/src/threadline/demo_continuation.py": "sha256:a10aa1e94b21b228880f026ea5918ef4a84da6caec1c49ba1445f32b58c0aaa8",
     "packages/context-model/src/threadline/evaluation.py": "sha256:7b560411811475c3c4202b1406c22c8f9dd9de73ba4c2440a7bd371b5d4b1255",
     "packages/context-model/src/threadline/evidence_safety.py": "sha256:6f1f2257d496c29dc18cb74e0adfdcb80dc5c88a18ff24f55bde4b9633d55c45",
-    "packages/context-model/src/threadline/git_repository.py": "sha256:b559c37ad00c5a51a0a5939c6923937e14b0d763ab9f63834ecba3823bd119ad",
+    "packages/context-model/src/threadline/git_repository.py": "sha256:586c52753d7fd5ed49655d3b138e6c907a5a79e23355db5229e4006f249f03cb",
     "packages/context-model/src/threadline/graph.py": "sha256:e30b17867e57ab3d1374e872578c376bcf2dcd6765bf618eff61e49f35ef299d",
     "packages/context-model/src/threadline/graph_evaluation.py": "sha256:b34fcafd538558aacf578b9c96f1a898d76cb81c2fb1b41823fc2aea8836b404",
-    "packages/context-model/src/threadline/ingest.py": "sha256:0203898ac8c65a039f1bb64e790b06cd485b294c74d307eee7a4dedc2e329c9e",
+    "packages/context-model/src/threadline/ingest.py": "sha256:2b5a693809ac714805ab70340e39edc9c7582a374e48daf445046fed24e9cdcc",
     "packages/context-model/src/threadline/invariants.py": "sha256:8dbf5036943d2c9bb4b6f3b52c774a8fa93e1384ac28cfda0996c843271d9b9b",
     "packages/context-model/src/threadline/manifest.py": "sha256:d7ce5cf646af8f977b585deaf9dcd36e693b3e9a6a1e0bf073f168c86d0eed45",
     "packages/context-model/src/threadline/mcp_runtime.py": "sha256:95d900eb285e93b4c31f97f856612f2ef0de80200f4638074ea92e56febc338b",
@@ -102,7 +102,7 @@
     "packages/context-model/src/threadline/service.py": "sha256:88fb63b49211fc24c150b40ca7ee37d315551398af67ea93135e620321b4aeb9",
     "packages/context-model/src/threadline/staleness.py": "sha256:8c9918758ab3de9b8f493d5bde5ac2fbd77293fe14aff85a6baa0a1814186a24",
     "packages/context-model/src/threadline/storage.py": "sha256:0de52385059bf6fae0095b38e44eec6fb3b284f942665dc0ec5065977fa9c1fc",
-    "packages/context-model/src/threadline/verifiers.py": "sha256:13b198dcd423a6fc04029b75e215cc55a8fd6884d2e3617ff4d840dcf3af6117",
+    "packages/context-model/src/threadline/verifiers.py": "sha256:c734ea8c7d7d9e1084a6a7bbb696480f48c2027ee8ca3cf7987300149154fc47",
     "packages/context-model/src/threadline/workspace.py": "sha256:48de2185e3c960e61b372133f6e50af46ab87e92cc2cc40f0109fa11c7b0cc14",
     "packages/contracts/examples/context-pack.json": "sha256:01c02cd1f1c7560ce1372c1dae8a11a4cf9c1017e727bd662c67861bf01cfd40",
     "packages/contracts/schemas/context-pack.schema.json": "sha256:87feb11507bf5c28549c5825b93ce3a00adb18403354dfbc844c03ce0d83fe47",
@@ -141,14 +141,14 @@
     "tests/unit/test_benchmark_report.py": "sha256:25efa1c50b8fae9c1334a53fb5eb61d77ecfd83c4e984d05cf98fbb00ef81a2e",
     "tests/unit/test_code_graph.py": "sha256:6efc5849fb486bfb1bdc389e5a4a47ca636b59e8b609ab1036a8667c8c1c8af3",
     "tests/unit/test_evidence_safety.py": "sha256:bfd15fe4fee3d0435c676f680ac74031f16d8746c3131ca0aeaee408c03258e5",
-    "tests/unit/test_git_repository.py": "sha256:462163333bdf241f4dfa5a903903065b0a16ae6a1a3f0c8bae9b188a07068eee",
+    "tests/unit/test_git_repository.py": "sha256:ec5a87fdf21ed497286222924af855e7294342a1f38dcafabcc518fc6cf67089",
     "tests/unit/test_invariants.py": "sha256:06af46b7d31b66fc5071e3b2c1e95e900958a47772a0812e74103a33eb62861a",
     "tests/unit/test_manifest.py": "sha256:34c1175daea187d856fb6250d51ca0b846536d7d2f6fb2d099ad49b526157b93",
     "tests/unit/test_models.py": "sha256:44d93f0fd566d8be15b1027356e4db2a2af40f920856c4a74ed2d9fbcb2e604d",
     "tests/unit/test_precedence.py": "sha256:6e064b3d4dba94cd42c9436421f6ca338a01489d26b023ce0dab3201408d4c66",
     "tests/unit/test_release_configuration.py": "sha256:ab23228aae45fac1a4e4e35da0764724cdc1c96136cd29c37a6bd2db8e68f1c7",
     "tests/unit/test_semantic_diff.py": "sha256:505cbe99f279fe49ed4dc4f6e1e9261c509aaa2651cc034a2cf534c6ae2907f2",
-    "tests/unit/test_verifiers.py": "sha256:ef492332f7a8ceb84726e6a6920efedde5e11583cd18337b14fd306c7a9277cb"
+    "tests/unit/test_verifiers.py": "sha256:fa31e3a1bec4b45619156cfa5452734de6a3acd04d28932c7f3dbad7ec923881"
   },
   "runner": {
     "argv": [
@@ -157,9 +157,9 @@
     ],
     "python": "3.14.6"
   },
-  "duration_ms": 48926.29,
-  "output_digest": "sha256:c0e3067af31ac8ded8b9ede2e7485d24ca258069fbaa0b77fae6493790230777",
-  "output_bytes": 10750,
+  "duration_ms": 52200.588,
+  "output_digest": "sha256:143ebdc45f012c96baa83deb4ddd0ffa4fd39c7c9491677925d43a48b9b508f4",
+  "output_bytes": 10763,
   "output_truncated": false,
   "privacy": "raw stdout and stderr are intentionally not persisted"
 }

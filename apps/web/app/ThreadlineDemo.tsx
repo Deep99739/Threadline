@@ -10,6 +10,7 @@ import {
   type DemoPayload,
   type EpistemicState,
 } from "./demo-snapshot";
+import { bundledProof, type ProofPayload } from "./proof-snapshot";
 
 type ConnectionState = "connecting" | "live" | "snapshot";
 type Filter = "all" | "risk" | "verified" | "human";
@@ -102,6 +103,9 @@ function EvidenceState({ state }: { state: EpistemicState }) {
 export function ThreadlineDemo() {
   const [payload, setPayload] = useState<DemoPayload>(bundledDemo);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [proof, setProof] = useState<ProofPayload>(bundledProof);
+  const [proofConnection, setProofConnection] =
+    useState<ConnectionState>("connecting");
   const [filter, setFilter] = useState<Filter>("all");
   const [selectedId, setSelectedId] = useState("snapshot-wiring-claim");
   const [detail, setDetail] = useState<InspectorDetail>({
@@ -116,21 +120,34 @@ export function ThreadlineDemo() {
 
     async function connect() {
       try {
-        const response = await fetch(`${API_URL}/api/demo`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("demo API is not ready");
-        const livePayload = (await response.json()) as DemoPayload;
+        const [demoResponse, proofResponse] = await Promise.all([
+          fetch(`${API_URL}/api/demo`, {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+          fetch(`${API_URL}/api/proof`, {
+            cache: "no-store",
+            signal: controller.signal,
+          }),
+        ]);
+        if (!demoResponse.ok) throw new Error("demo API is not ready");
+        const livePayload = (await demoResponse.json()) as DemoPayload;
         setPayload(livePayload);
         setConnection("live");
         setSelectedId(
           livePayload.items.find((item) => item.epistemic_state === "CONTRADICTED")
             ?.entity_id ?? livePayload.items[0]?.entity_id,
         );
+        if (proofResponse.ok) {
+          setProof((await proofResponse.json()) as ProofPayload);
+          setProofConnection("live");
+        } else {
+          setProofConnection("snapshot");
+        }
       } catch (error) {
         if (!(error instanceof DOMException && error.name === "AbortError")) {
           setConnection("snapshot");
+          setProofConnection("snapshot");
         }
       }
     }
@@ -254,8 +271,9 @@ export function ThreadlineDemo() {
         </a>
         <nav aria-label="Primary navigation">
           <a href="#product">Product</a>
+          <a href="#proof">Executed proof</a>
+          <a href="#adopt">Use it</a>
           <a href="#contract">Evidence contract</a>
-          <a href="#architecture">Architecture</a>
         </nav>
         <a className="header-cta" href="#workbench">
           Open the handoff <span aria-hidden="true">↘</span>
@@ -285,22 +303,22 @@ export function ThreadlineDemo() {
           <div className="proof-entry">
             <span>01</span>
             <div>
-              <strong>Bound to a commit</strong>
-              <p>No floating summary detached from repository state.</p>
+              <strong>Works beside your agent</strong>
+              <p>Codex, Claude Code, Cursor, VS Code, Antigravity, or a terminal.</p>
             </div>
           </div>
           <div className="proof-entry">
             <span>02</span>
             <div>
-              <strong>Uncertainty stays visible</strong>
-              <p>Unknown and contradicted claims remain first-class context.</p>
+              <strong>Bound to a commit</strong>
+              <p>No floating summary detached from repository state.</p>
             </div>
           </div>
           <div className="proof-entry">
             <span>03</span>
             <div>
-              <strong>Every claim can be opened</strong>
-              <p>Citations lead back to the source and its content hash.</p>
+              <strong>Fails closed on drift</strong>
+              <p>Dirty files, moved commits, and unsupported completion remain visible.</p>
             </div>
           </div>
         </div>
@@ -515,6 +533,119 @@ export function ThreadlineDemo() {
             )}
           </aside>
         </div>
+      </section>
+
+      <section className="proof-section" id="proof">
+        <div className="proof-heading">
+          <div>
+            <p className="section-kicker">Executed proof</p>
+            <h2>A second agent continued the task from the handoff.</h2>
+          </div>
+          <div className={`proof-source connection-${proofConnection}`}>
+            <span aria-hidden="true" />
+            {proofConnection === "live" ? "Retained report" : "Bundled report snapshot"}
+          </div>
+        </div>
+
+        <div className="continuation-flow" aria-label="Executed continuation flow">
+          <article>
+            <span>01</span>
+            <strong>Agent A stops</strong>
+            <p>Threadline compiles the task, constraints, evidence, and safe next action.</p>
+          </article>
+          <div aria-hidden="true">→</div>
+          <article>
+            <span>02</span>
+            <strong>Agent B reads</strong>
+            <p>The official MCP client opens the cited exact-commit handoff.</p>
+          </article>
+          <div aria-hidden="true">→</div>
+          <article>
+            <span>03</span>
+            <strong>Work changes</strong>
+            <p>The second agent implements the retry path and runs the complete suite.</p>
+          </article>
+          <div aria-hidden="true">→</div>
+          <article>
+            <span>04</span>
+            <strong>Old context is refused</strong>
+            <p>The moved commit invalidates the prior handoff before a current one is compiled.</p>
+          </article>
+        </div>
+
+        <div className="proof-ledger">
+          <div className="proof-summary">
+            <span>{proof.sample_size} executed cases</span>
+            <strong>{proof.cases.filter((item) => item.passed).length} passed</strong>
+            <p>{proof.repository_count} isolated temporary repositories</p>
+          </div>
+          <div className="case-list">
+            {proof.cases.map((item) => (
+              <article key={item.id}>
+                <code>{item.id}</code>
+                <div>
+                  <strong>{item.title}</strong>
+                  <p>{item.observed}</p>
+                </div>
+                <span>{item.passed ? "PASS" : "FAIL"}</span>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <div className="claim-boundary">
+          <span>Claim boundary</span>
+          <p>{proof.claim_boundary}</p>
+        </div>
+      </section>
+
+      <section className="adoption-section" id="adopt">
+        <div className="adoption-heading">
+          <p className="section-kicker">Use Threadline</p>
+          <h2>Keep your coding agent. Replace the unsupported handoff.</h2>
+          <p>
+            Threadline runs locally beside an existing Git repository. It needs no model API key
+            and uses repository-private SQLite by default.
+          </p>
+        </div>
+        <div className="client-line" aria-label="Supported coding clients">
+          <span>Codex</span>
+          <span>Claude Code</span>
+          <span>Cursor</span>
+          <span>VS Code</span>
+          <span>Antigravity</span>
+          <span>Terminal</span>
+        </div>
+        <ol className="adoption-steps">
+          <li>
+            <span>01</span>
+            <div>
+              <strong>Initialize the task contract</strong>
+              <code>threadline init . --objective &quot;Fix parser drift&quot; --next-action &quot;Add the integration check&quot;</code>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <strong>Connect one project-scoped client</strong>
+              <code>threadline connect codex .</code>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <strong>Record real command evidence</strong>
+              <code>threadline check . --scope FULL --include parser.py -- pytest -q</code>
+            </div>
+          </li>
+          <li>
+            <span>04</span>
+            <div>
+              <strong>Hand off at the exact commit</strong>
+              <code>threadline sync . &amp;&amp; threadline handoff .</code>
+            </div>
+          </li>
+        </ol>
       </section>
 
       <section className="contract-section" id="contract">

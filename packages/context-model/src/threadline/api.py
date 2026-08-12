@@ -5,12 +5,14 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from threadline.benchmark_report import load_benchmark_report
 from threadline.demo import DEMO_TASK_ID, DEMO_TENANT_ID, DEMO_WORKSPACE_ID
 from threadline.models import ContextSnapshot
 from threadline.storage import ThreadlineStore
@@ -39,7 +41,10 @@ def _active_context(store: ThreadlineStore) -> tuple[ContextSnapshot, dict[str, 
     return snapshot, content
 
 
-def create_app(database_url: str | None = None) -> FastAPI:
+def create_app(
+    database_url: str | None = None,
+    benchmark_path: Path | None = None,
+) -> FastAPI:
     resolved_url = database_url or os.getenv("THREADLINE_DATABASE_URL") or DEFAULT_API_DATABASE_URL
 
     @asynccontextmanager
@@ -104,6 +109,16 @@ def create_app(database_url: str | None = None) -> FastAPI:
             "conflicts": content["contradictions"],
             "items": pack["items"],
         }
+
+    @app.get("/api/proof")
+    def proof() -> dict[str, Any]:
+        try:
+            return load_benchmark_report(benchmark_path)
+        except (FileNotFoundError, ValueError) as error:
+            raise HTTPException(
+                status_code=503,
+                detail="The retained executed benchmark is unavailable.",
+            ) from error
 
     @app.get("/api/evidence/{evidence_id}")
     def evidence(evidence_id: UUID, request: Request) -> dict[str, Any]:

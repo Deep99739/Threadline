@@ -54,8 +54,8 @@ slice:
 - explicit Alembic migrations and tenant-scoped PostgreSQL storage;
 - a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
 - a read-only HTTP demo surface over that exact compiled handoff;
-- an interactive evidence workbench with state filters, source inspection, and a bundled
-  synthetic fallback;
+- an interactive evidence workbench with state filters, source inspection, a retained executed
+  continuation report, practical client setup, and an explicitly labelled bundled fallback;
 - automated lint, type, contract, property, coverage, and structure checks; and
 - a verified local PostgreSQL, Redis, and object-store environment.
 
@@ -121,7 +121,9 @@ make web
 
 Open `http://localhost:3000`. The website connects to the read-only demo API at
 `http://localhost:8000`; if that API is unavailable, it remains usable as an explicitly labelled
-bundled synthetic snapshot.
+bundled synthetic snapshot. The executed-proof section reads the retained nine-case report from
+`evals/results/continuation-benchmark-v0.2.json`; it does not turn that synthetic report into an
+external accuracy, adoption, or production claim.
 
 Stop local services:
 

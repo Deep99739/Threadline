@@ -34,8 +34,13 @@ test("server-renders the complete Threadline product surface", async () => {
   assert.match(html, /Evidence-ranked context/);
   assert.match(html, /run_job calls RetryPolicy/);
   assert.match(html, /CONTRADICTED/);
+  assert.match(html, /A second agent continued the task from the handoff/);
+  assert.match(html, /Nine deterministic synthetic regression cases/);
+  assert.match(html, /Keep your coding agent/);
+  assert.match(html, /threadline connect codex/);
   assert.match(html, /The evidence contract/);
   assert.doesNotMatch(html, /Why I built it/);
+  assert.doesNotMatch(html, /—|linear-gradient|radial-gradient/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -44,6 +49,7 @@ test("marks the synthetic fallback honestly", async () => {
   const html = await response.text();
 
   assert.match(html, /synthetic retry task with deliberately conflicting evidence/);
+  assert.match(html, /not an external accuracy, adoption, or production claim/);
   assert.match(html, /Checking local evidence/);
   assert.doesNotMatch(html, /99%|thousands of users|production-ready/i);
 });

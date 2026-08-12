@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -9,10 +10,48 @@ from threadline.api import create_app
 from threadline.demo import DEMO_TENANT_ID, run_demo
 
 
+def _benchmark_report(path: Path) -> Path:
+    cases = [
+        {
+            "id": "EXEC-001",
+            "title": "Continue through Agent B",
+            "passed": True,
+            "expected": "current handoff",
+            "observed": "current handoff",
+            "failure_layer": None,
+        }
+    ]
+    path.write_text(
+        json.dumps(
+            {
+                "report": "test-report",
+                "dataset": "test-dataset",
+                "sample_size": 1,
+                "repository_count": 1,
+                "cases": cases,
+                "metrics": {
+                    "regression_cases_passed": {
+                        "correct": 1,
+                        "total": 1,
+                        "rate": 1.0,
+                    }
+                },
+                "baseline_failures": [],
+                "failure_analysis": [],
+                "limits": ["Synthetic test fixture."],
+                "claim_boundary": "One deterministic synthetic regression case.",
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def _seeded_client(tmp_path: Path) -> tuple[TestClient, str]:
     database_url = f"sqlite+pysqlite:///{tmp_path / 'api.db'}"
     run_demo(database_url, tmp_path / "demo-repository")
-    return TestClient(create_app(database_url)), database_url
+    benchmark_path = _benchmark_report(tmp_path / "benchmark.json")
+    return TestClient(create_app(database_url, benchmark_path)), database_url
 
 
 def test_health_and_demo_surface_real_partial_handoff(tmp_path: Path) -> None:
@@ -34,6 +73,19 @@ def test_health_and_demo_surface_real_partial_handoff(tmp_path: Path) -> None:
     assert payload["unknowns"]
     assert payload["conflicts"]
     assert payload["items"]
+
+
+def test_proof_surface_returns_the_retained_executed_report(tmp_path: Path) -> None:
+    client, _ = _seeded_client(tmp_path)
+
+    with client:
+        response = client.get("/api/proof")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["sample_size"] == len(payload["cases"]) == 1
+    assert payload["cases"][0]["passed"] is True
+    assert "synthetic" in payload["claim_boundary"].lower()
 
 
 def test_cited_evidence_can_be_opened_but_unscoped_evidence_cannot(
@@ -88,3 +140,17 @@ def test_demo_requires_explicit_seed(tmp_path: Path) -> None:
         response = client.get("/api/demo")
 
     assert response.status_code == 503
+
+
+def test_proof_surface_refuses_a_missing_or_malformed_report(tmp_path: Path) -> None:
+    database_url = f"sqlite+pysqlite:///{tmp_path / 'proof.db'}"
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{}", encoding="utf-8")
+
+    with TestClient(create_app(database_url, malformed)) as client:
+        malformed_response = client.get("/api/proof")
+    with TestClient(create_app(database_url, tmp_path / "missing.json")) as client:
+        missing_response = client.get("/api/proof")
+
+    assert malformed_response.status_code == 503
+    assert missing_response.status_code == 503

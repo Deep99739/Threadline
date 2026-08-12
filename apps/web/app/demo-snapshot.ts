@@ -16,7 +16,7 @@ export type Citation = {
 };
 
 export type ContextItem = {
-  entity_type: "decision" | "constraint" | "claim" | "observation";
+  entity_type: "task" | "decision" | "constraint" | "claim" | "observation";
   entity_id: string;
   statement: string;
   epistemic_state: EpistemicState;

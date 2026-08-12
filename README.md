@@ -115,6 +115,15 @@ make phase1-eval
 make clean-clone-check
 ```
 
+Before recording or publishing a release checkpoint, run the single composite gate:
+
+```bash
+make release-check
+```
+
+It executes the complete backend, contract, coverage, foundation, frontend, build, rendered-page,
+clean-install, and real stdio MCP checks in a fixed reviewable order.
+
 To run the interactive evidence workbench, keep these in two terminals after `make demo`:
 
 ```bash
@@ -280,6 +289,14 @@ wrong-task scope denial, known-secret redaction, and repository-instruction boun
 per-case outcomes, baseline failures, denominators, and limitations are retained in
 [`evals/results/continuation-benchmark-v0.2.json`](./evals/results/continuation-benchmark-v0.2.json).
 This is a deterministic synthetic regression benchmark, not an external accuracy or adoption claim.
+
+## Threadline on Threadline
+
+This repository owns a committed `threadline.json` task contract. Release evidence can therefore be
+recorded through the same public workflow used by another repository: execute `make release-check`
+through `threadline check`, review and commit the generated content-bound report, synchronize the
+commit, then inspect the handoff through the CLI or MCP. The self-hosted report is evidence for that
+exact commit only; it is not a hosted-production or user-adoption claim.
 
 `make clean-clone-check` exports the committed repository into a temporary clean checkout, creates
 a new virtual environment, installs only the declared runtime dependencies, initializes a separate

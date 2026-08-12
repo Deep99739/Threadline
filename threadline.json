@@ -11,6 +11,11 @@
   "decisions": [],
   "constraints": [],
   "observations": [],
-  "verifiers": [],
+  "verifiers": [
+    {
+      "kind": "test_report_scope",
+      "path": "threadline/test-report.json"
+    }
+  ],
   "evidence_exclusions": []
 }

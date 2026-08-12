@@ -15,6 +15,7 @@ from threadline.models import (
     ContextVersion,
     EpistemicState,
     Handoff,
+    ParseStatus,
     utc_now,
 )
 from threadline.retrieval import RetrievedEntity, evidence_index, lexical_retrieve
@@ -153,9 +154,15 @@ def compile_handoff(
         published_at=utc_now(),
     )
     context_version = store.save_context_version(proposed_context_version, task_id)
-    unknowns = tuple(
+    claim_unknowns = tuple(
         item.statement for item in items if item.epistemic_state is EpistemicState.UNKNOWN
     )
+    parser_unknowns = tuple(
+        f"Code graph {item.status.value.lower()} for {item.path}: {item.message}"
+        for item in snapshot.code_parse_diagnostics
+        if item.status is not ParseStatus.COMPLETE
+    )
+    unknowns = (*claim_unknowns, *parser_unknowns)
     conflicts = tuple(
         item.statement for item in items if item.epistemic_state is EpistemicState.CONTRADICTED
     )

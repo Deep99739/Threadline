@@ -20,6 +20,8 @@ ADRs are immutable once accepted. A later decision supersedes an earlier record 
 | 014 | Explicit, reviewable, client-neutral local product workflows | Accepted |
 | 015 | Command-executed, content-bound local evidence | Accepted |
 | 016 | Redact stored evidence and label repository instructions untrusted | Accepted |
+| 017 | Isolate native code parsing and fail with explicit unknowns | Accepted |
 
-ADRs 001–006 were accepted on 2026-08-11; ADRs 007–016 were accepted on 2026-08-12. These
-establish the current trust invariants; measurements may cause later superseding ADRs.
+ADRs 001–006 were accepted on 2026-08-11; ADRs 007–016 were accepted on 2026-08-12; ADR 017 was
+accepted on 2026-08-13. These establish the current trust invariants; measurements may cause later
+superseding ADRs.

@@ -9,7 +9,7 @@ __pycache__/
 .coverage.*
 coverage.xml
 htmlcov/
-.venv/
+.venv*/
 
 # JavaScript
 node_modules/

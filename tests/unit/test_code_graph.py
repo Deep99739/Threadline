@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 from uuid import UUID
 
+import pytest
+
 from tests.unit.test_models import ACTOR, TENANT, WORKSPACE, repository_version
+from threadline import code_graph
 from threadline.code_graph import CodeGraphExtraction, extract_code_graph
 from threadline.git_repository import GitFile, evidence_from_git_file
 from threadline.models import DependencyKind, ParseStatus, SymbolKind
@@ -16,7 +19,7 @@ def _file(path: str, content: str) -> GitFile:
     return GitFile(path=path, content=content, content_hash=f"sha256:{digest}")
 
 
-def _extract(*files: GitFile) -> CodeGraphExtraction:
+def _extract(*files: GitFile, isolate_native: bool = False) -> CodeGraphExtraction:
     version = repository_version()
     evidence = {
         item.path: evidence_from_git_file(
@@ -36,6 +39,7 @@ def _extract(*files: GitFile) -> CodeGraphExtraction:
         actor_id=ACTOR,
         task_id=TASK_ID,
         repository_version=version,
+        isolate_native=isolate_native,
     )
 
 
@@ -140,3 +144,39 @@ def test_exact_snapshot_produces_stable_entity_ids() -> None:
     assert [item.id for item in first.diagnostics] == [
         item.id for item in second.diagnostics
     ]
+
+
+def test_isolates_a_native_failure_on_a_large_tsx_product_surface() -> None:
+    rows = "\n".join(
+        f"<button onClick={{() => inspectSource('src/{index}.ts')}}>Row {index}</button>"
+        for index in range(600)
+    )
+    surface = _file(
+        "ProductSurface.tsx",
+        "export function ProductSurface() {\n"
+        "  function inspectSource(path: string) { return path.trim(); }\n"
+        f"  return <main>{rows}</main>;\n"
+        "}\n",
+    )
+
+    result = _extract(surface, isolate_native=True)
+
+    assert result.diagnostics[0].status is ParseStatus.COMPLETE
+    assert any(item.qualified_name.endswith("ProductSurface") for item in result.symbols)
+
+
+def test_native_parser_failure_becomes_an_explicit_empty_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _file("service.py", "def run():\n    return 1\n")
+
+    def fail_parse(*_args: object) -> object:
+        raise RuntimeError("native parser stopped")
+
+    monkeypatch.setattr(code_graph, "_parse_file_isolated", fail_parse)
+
+    result = _extract(source, isolate_native=True)
+
+    assert result.diagnostics[0].status is ParseStatus.FAILED
+    assert not result.symbols
+    assert not result.dependencies

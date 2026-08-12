@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from tests.helpers import git, make_demo_repository
 
-from threadline.models import EpistemicState
+from threadline.models import EpistemicState, ParseStatus
 from threadline.retrieval import lexical_retrieve
 from threadline.service import ServiceScope, ThreadlineService
 from threadline.storage import ThreadlineStore
@@ -55,6 +55,16 @@ def test_ingest_compile_and_read_cited_handoff(tmp_path: Path) -> None:
     assert compiled.context_pack.repository_version.commit_sha == git(root, "rev-parse", "HEAD")
     assert compiled.context_pack.conflicts
     assert compiled.context_pack.unknowns
+    failed_parse = next(
+        (
+            item
+            for item in ingestion.snapshot.code_parse_diagnostics
+            if item.status is not ParseStatus.COMPLETE
+        ),
+        None,
+    )
+    if failed_parse is not None:
+        assert any(failed_parse.path in item for item in compiled.context_pack.unknowns)
     assert compiled.content["next_action"] == (
         "Wire RetryPolicy into run_job while reusing the original idempotency key, "
         "then add an integration test and run the complete suite."

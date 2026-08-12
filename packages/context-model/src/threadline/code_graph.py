@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
-import json
+import os
+import re
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import lru_cache
+from multiprocessing import get_context
+from multiprocessing.connection import Connection
 from pathlib import Path
+from typing import cast
 from uuid import UUID, uuid5
 
 import tree_sitter_javascript
@@ -34,6 +39,18 @@ LANGUAGE_BY_SUFFIX = {
     ".ts": "typescript",
     ".tsx": "tsx",
 }
+DEFINITION_NODE_TYPES = {
+    "class_declaration",
+    "class_definition",
+    "class_expression",
+    "function_declaration",
+    "function_definition",
+    "method_definition",
+    "variable_declarator",
+}
+CALL_NODE_TYPES = {"call", "call_expression", "new_expression"}
+IMPORT_NODE_TYPES = {"import_from_statement", "import_statement"}
+PARSE_TIMEOUT_SECONDS = 10
 
 
 @dataclass(frozen=True)
@@ -67,15 +84,32 @@ class _ParsedDependency:
     ordinal: int
 
 
+@dataclass(frozen=True)
+class _NodeView:
+    node_type: str
+    start_byte: int
+    end_byte: int
+    start_line: int
+    end_line: int
+    has_error: bool
+    is_missing: bool
+
+
 @lru_cache(maxsize=4)
-def _parser(language: str) -> Parser:
-    grammar = {
+def _language(language: str) -> Language:
+    """Keep each native grammar alive for every parser that references it."""
+
+    return {
         "python": Language(tree_sitter_python.language()),
         "javascript": Language(tree_sitter_javascript.language()),
         "typescript": Language(tree_sitter_typescript.language_typescript()),
         "tsx": Language(tree_sitter_typescript.language_tsx()),
     }[language]
-    return Parser(grammar)
+
+
+@lru_cache(maxsize=4)
+def _parser(language: str) -> Parser:
+    return Parser(_language(language))
 
 
 def _module_name(path: str) -> str:
@@ -86,28 +120,55 @@ def _module_name(path: str) -> str:
     return ".".join(parts) or source.stem
 
 
-def _node_text(node: Node, content: bytes) -> str:
+def _node_text(node: _NodeView, content: bytes) -> str:
     return content[node.start_byte : node.end_byte].decode("utf-8")
 
 
-def _line_range(node: Node) -> tuple[int, int]:
-    return node.start_point.row + 1, node.end_point.row + 1
+def _line_range(node: _NodeView) -> tuple[int, int]:
+    return node.start_line, node.end_line
 
 
 def _symbol_key(path: str, qualified_name: str) -> str:
     return f"symbol:{path}:{qualified_name}"
 
 
-def _named_child_text(node: Node, field: str, content: bytes) -> str | None:
-    child = node.child_by_field_name(field)
-    if child is None:
-        return None
-    value = " ".join(_node_text(child, content).split())
-    return value or None
+def _walk_nodes(root: Node) -> Iterator[_NodeView]:
+    """Copy node facts before their TreeCursor advances native traversal state."""
+
+    cursor = root.walk()
+    reached_root = False
+    while not reached_root:
+        node = cursor.node
+        if node is None:
+            return
+        if node.is_named or node.is_missing:
+            view = _NodeView(
+                node_type=node.type,
+                start_byte=node.start_byte,
+                end_byte=node.end_byte,
+                start_line=node.start_point.row + 1,
+                end_line=node.end_point.row + 1,
+                has_error=node.has_error,
+                is_missing=node.is_missing,
+            )
+            del node
+            yield view
+        else:
+            del node
+        if cursor.goto_first_child():
+            continue
+        if cursor.goto_next_sibling():
+            continue
+        while True:
+            if not cursor.goto_parent():
+                reached_root = True
+                break
+            if cursor.goto_next_sibling():
+                break
 
 
 def _definition(
-    node: Node,
+    node: _NodeView,
     *,
     language: str,
     scopes: tuple[_ParsedSymbol, ...],
@@ -115,97 +176,103 @@ def _definition(
 ) -> tuple[str, SymbolKind] | None:
     if node.has_error:
         return None
-    if language == "python" and node.type == "class_definition":
-        name = _named_child_text(node, "name", content)
+    source = " ".join(_node_text(node, content).split())
+    if language == "python" and node.node_type == "class_definition":
+        match = re.match(r"class\s+([A-Za-z_]\w*)", source)
+        name = match.group(1) if match else None
         return (name, SymbolKind.CLASS) if name else None
-    if language == "python" and node.type == "function_definition":
-        name = _named_child_text(node, "name", content)
+    if language == "python" and node.node_type == "function_definition":
+        match = re.match(r"(?:async\s+)?def\s+([A-Za-z_]\w*)", source)
+        name = match.group(1) if match else None
         kind = (
             SymbolKind.METHOD
             if any(item.symbol_kind is SymbolKind.CLASS for item in scopes)
             else SymbolKind.FUNCTION
         )
         return (name, kind) if name else None
-    if language != "python" and node.type in {"class_declaration", "class_expression"}:
-        name = _named_child_text(node, "name", content)
+    if language != "python" and node.node_type in {"class_declaration", "class_expression"}:
+        match = re.match(r"class\s+([A-Za-z_$][\w$]*)", source)
+        name = match.group(1) if match else None
         return (name, SymbolKind.CLASS) if name else None
-    if language != "python" and node.type == "function_declaration":
-        name = _named_child_text(node, "name", content)
+    if language != "python" and node.node_type == "function_declaration":
+        match = re.match(r"(?:export\s+)?(?:async\s+)?function\s+\*?\s*([A-Za-z_$][\w$]*)", source)
+        name = match.group(1) if match else None
         return (name, SymbolKind.FUNCTION) if name else None
-    if language != "python" and node.type == "method_definition":
-        name = _named_child_text(node, "name", content)
+    if language != "python" and node.node_type == "method_definition":
+        match = re.match(
+            r"(?:(?:static|async|get|set)\s+)*([A-Za-z_$][\w$]*)\s*\(", source
+        )
+        name = match.group(1) if match else None
         return (name, SymbolKind.METHOD) if name else None
-    if language != "python" and node.type == "variable_declarator":
-        value = node.child_by_field_name("value")
-        if value is not None and value.type in {
-            "arrow_function",
-            "function_expression",
-            "generator_function",
-        }:
-            name = _named_child_text(node, "name", content)
-            return (name, SymbolKind.FUNCTION) if name else None
+    if language != "python" and node.node_type == "variable_declarator":
+        match = re.match(r"([A-Za-z_$][\w$]*)\s*=", source)
+        if match and ("=>" in source or re.search(r"=\s*(?:async\s+)?function", source)):
+            return match.group(1), SymbolKind.FUNCTION
     return None
 
 
-def _call_target(node: Node, language: str, content: bytes) -> tuple[str, DependencyKind] | None:
+def _call_target(
+    node: _NodeView, language: str, content: bytes
+) -> tuple[str, DependencyKind] | None:
     if node.has_error:
         return None
-    if language == "python" and node.type == "call":
-        target = _named_child_text(node, "function", content)
+    source = " ".join(_node_text(node, content).split())
+    if language == "python" and node.node_type == "call":
+        match = re.match(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(", source)
+        target = match.group(1) if match else None
         if target is None:
             return None
         last = target.rsplit(".", 1)[-1]
         kind = DependencyKind.CONSTRUCTS if last[:1].isupper() else DependencyKind.CALLS
         return target, kind
-    if language != "python" and node.type == "call_expression":
-        target = _named_child_text(node, "function", content)
+    if language != "python" and node.node_type == "call_expression":
+        match = re.match(r"([A-Za-z_$][\w$]*(?:\??\.[A-Za-z_$][\w$]*)*)\s*\(", source)
+        target = match.group(1) if match else None
         return (target, DependencyKind.CALLS) if target else None
-    if language != "python" and node.type == "new_expression":
-        target = _named_child_text(node, "constructor", content)
+    if language != "python" and node.node_type == "new_expression":
+        match = re.match(r"new\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)", source)
+        target = match.group(1) if match else None
         return (target, DependencyKind.CONSTRUCTS) if target else None
     return None
 
 
-def _python_import_targets(node: Node, content: bytes) -> tuple[str, ...]:
-    if node.type == "import_from_statement":
-        module = _named_child_text(node, "module_name", content)
+def _python_import_targets(node: _NodeView, content: bytes) -> tuple[str, ...]:
+    source = " ".join(_node_text(node, content).split())
+    if node.node_type == "import_from_statement":
+        match = re.match(r"from\s+([.A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+import\s+", source)
+        module = match.group(1) if match else None
         return (module,) if module else ()
-    targets: list[str] = []
-    for index, child in enumerate(node.children):
-        if node.field_name_for_child(index) != "name":
-            continue
-        name_node = child.child_by_field_name("name") if child.type == "aliased_import" else child
-        if name_node is not None:
-            targets.append(" ".join(_node_text(name_node, content).split()))
-    return tuple(targets)
+    imported = source.removeprefix("import ")
+    return tuple(
+        item.split(" as ", 1)[0].strip()
+        for item in imported.split(",")
+        if item.split(" as ", 1)[0].strip()
+    )
 
 
-def _import_targets(node: Node, language: str, content: bytes) -> tuple[str, ...]:
+def _import_targets(node: _NodeView, language: str, content: bytes) -> tuple[str, ...]:
     if node.has_error:
         return ()
-    if language == "python" and node.type in {"import_statement", "import_from_statement"}:
+    if language == "python" and node.node_type in {
+        "import_statement",
+        "import_from_statement",
+    }:
         return _python_import_targets(node, content)
-    if language != "python" and node.type == "import_statement":
-        source = _named_child_text(node, "source", content)
-        if source is None:
+    if language != "python" and node.node_type == "import_statement":
+        statement = _node_text(node, content)
+        match = re.search(r"(?:from\s+)?(['\"])(.*?)\1\s*;?\s*$", statement, re.DOTALL)
+        if match is None:
             return ()
-        try:
-            decoded = json.loads(source)
-        except json.JSONDecodeError:
-            return ()
-        return (decoded,) if isinstance(decoded, str) and decoded else ()
+        decoded = match.group(2)
+        return (decoded,) if decoded else ()
     return ()
 
 
 def _error_lines(root: Node) -> tuple[int, ...]:
     lines: set[int] = set()
-    stack = [root]
-    while stack:
-        node = stack.pop()
-        if node.type == "ERROR" or node.is_missing:
-            lines.add(node.start_point.row + 1)
-            continue
-        stack.extend(node.children)
+    for node in _walk_nodes(root):
+        if node.node_type == "ERROR" or node.is_missing:
+            lines.add(node.start_line)
     return tuple(sorted(lines))
 
 
@@ -231,12 +298,18 @@ def _parse_file(
     dependencies: list[_ParsedDependency] = []
     ordinal = 0
 
-    def visit(node: Node, scopes: tuple[_ParsedSymbol, ...]) -> None:
-        nonlocal ordinal
-        if node.type == "ERROR" or node.is_missing:
-            return
-        next_scopes = scopes
-        definition = _definition(node, language=language, scopes=scopes, content=content)
+    active_scopes: list[tuple[_ParsedSymbol, int]] = []
+    for node in _walk_nodes(tree.root_node):
+        while active_scopes and node.start_byte >= active_scopes[-1][1]:
+            active_scopes.pop()
+        if node.node_type == "ERROR" or node.is_missing:
+            continue
+        scopes = tuple(item[0] for item in active_scopes)
+        definition = (
+            _definition(node, language=language, scopes=scopes, content=content)
+            if node.node_type in DEFINITION_NODE_TYPES
+            else None
+        )
         if definition is not None:
             name, symbol_kind = definition
             parents = [
@@ -256,10 +329,15 @@ def _parse_file(
                 evidence_id=evidence.id,
             )
             symbols.append(symbol)
-            next_scopes = (*scopes, symbol)
+            active_scopes.append((symbol, node.end_byte))
 
-        owner = next_scopes[-1] if next_scopes else module
-        for target in _import_targets(node, language, content):
+        owner = active_scopes[-1][0] if active_scopes else module
+        import_targets = (
+            _import_targets(node, language, content)
+            if node.node_type in IMPORT_NODE_TYPES
+            else ()
+        )
+        for target in import_targets:
             start, end = _line_range(node)
             dependencies.append(
                 _ParsedDependency(
@@ -274,7 +352,11 @@ def _parse_file(
                 )
             )
             ordinal += 1
-        call = _call_target(node, language, content)
+        call = (
+            _call_target(node, language, content)
+            if node.node_type in CALL_NODE_TYPES
+            else None
+        )
         if call is not None:
             target, dependency_kind = call
             start, end = _line_range(node)
@@ -291,13 +373,76 @@ def _parse_file(
                 )
             )
             ordinal += 1
-        for child in node.named_children:
-            visit(child, next_scopes)
-
-    visit(tree.root_node, ())
     errors = _error_lines(tree.root_node)
     status = ParseStatus.PARTIAL if tree.root_node.has_error else ParseStatus.COMPLETE
     return symbols, dependencies, status, errors
+
+
+def _parse_file_worker(
+    connection: Connection,
+    git_file: GitFile,
+    evidence: Evidence,
+    language: str,
+) -> None:  # pragma: no cover - coverage is owned by the isolated child process
+    """Run native parser access where a binding crash cannot kill the caller."""
+
+    error_sink = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(error_sink, 2)
+    os.close(error_sink)
+    try:
+        try:
+            connection.send(("ok", _parse_file(git_file, evidence, language)))
+        except Exception as exc:  # pragma: no cover - exercised across process boundary
+            connection.send(("error", f"{type(exc).__name__}: {exc}"))
+        if connection.poll(PARSE_TIMEOUT_SECONDS):
+            connection.recv()
+    finally:
+        connection.close()
+    os._exit(0)
+
+
+def _parse_file_isolated(
+    git_file: GitFile,
+    evidence: Evidence,
+    language: str,
+) -> tuple[list[_ParsedSymbol], list[_ParsedDependency], ParseStatus, tuple[int, ...]]:
+    context = get_context("spawn")
+    receiver, sender = context.Pipe(duplex=True)
+    process = context.Process(
+        target=_parse_file_worker,
+        args=(sender, git_file, evidence, language),
+        daemon=True,
+    )
+    process.start()
+    sender.close()
+    try:
+        if not receiver.poll(PARSE_TIMEOUT_SECONDS):
+            process.terminate()
+            process.join(timeout=1)
+            raise TimeoutError(f"parser exceeded {PARSE_TIMEOUT_SECONDS} seconds")
+        try:
+            outcome, payload = receiver.recv()
+            receiver.send("received")
+        except EOFError as exc:
+            process.join(timeout=1)
+            raise RuntimeError(
+                f"native parser exited without a result (exit code {process.exitcode})"
+            ) from exc
+    finally:
+        receiver.close()
+    process.join(timeout=1)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=1)
+        raise TimeoutError("native parser did not exit after returning a result")
+    if process.exitcode != 0:
+        raise RuntimeError(f"native parser exited with code {process.exitcode}")
+    if outcome != "ok":
+        raise RuntimeError(str(payload))
+    return cast(
+        tuple[list[_ParsedSymbol], list[_ParsedDependency], ParseStatus, tuple[int, ...]],
+        payload,
+    )
 
 
 def _identity(
@@ -359,6 +504,7 @@ def extract_code_graph(
     actor_id: UUID,
     task_id: UUID,
     repository_version: RepositoryVersion,
+    isolate_native: bool = True,
 ) -> CodeGraphExtraction:
     """Parse supported committed files and return deterministic, evidence-bound entities."""
 
@@ -371,7 +517,8 @@ def extract_code_graph(
             continue
         evidence = evidence_by_path[git_file.path]
         try:
-            file_symbols, file_dependencies, status, error_lines = _parse_file(
+            parse = _parse_file_isolated if isolate_native else _parse_file
+            file_symbols, file_dependencies, status, error_lines = parse(
                 git_file, evidence, language
             )
         except Exception as exc:  # pragma: no cover - parser boundary is tested via injection

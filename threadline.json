@@ -5,8 +5,8 @@
     "id": "3b04fe2d-af7a-4faf-9101-2f9d0d3b417f",
     "objective": "Keep cross-agent engineering handoffs current, cited, and safe on real repositories",
     "status": "IN_PROGRESS",
-    "next_action": "Run the complete release gate and compile Threadline own exact-commit handoff",
-    "query": "Keep cross-agent engineering handoffs current, cited, and safe on real repositories Run the complete release gate and compile Threadline own exact-commit handoff"
+    "next_action": "Review the exact-commit handoff, publish the repository, and record the final product walkthrough",
+    "query": "Keep cross-agent engineering handoffs current, cited, and safe on real repositories Review the exact-commit handoff, publish the repository, and record the final product walkthrough"
   },
   "decisions": [],
   "constraints": [],

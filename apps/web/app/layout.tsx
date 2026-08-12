@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,10 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
-  ),
+const siteMetadata: Metadata = {
   title: {
     default: "Threadline: Evidence-bound engineering handoffs",
     template: "%s · Threadline",
@@ -44,6 +42,20 @@ export const metadata: Metadata = {
     images: ["/og.png"],
   },
 };
+
+export async function generateMetadata(): Promise<Metadata> {
+  const requestHeaders = await headers();
+  const forwardedHost = requestHeaders.get("x-forwarded-host");
+  const host = forwardedHost ?? requestHeaders.get("host") ?? "localhost:3000";
+  const forwardedProtocol = requestHeaders.get("x-forwarded-proto");
+  const protocol = forwardedProtocol ?? (host.startsWith("localhost") ? "http" : "https");
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`;
+
+  return {
+    ...siteMetadata,
+    metadataBase: new URL(siteUrl),
+  };
+}
 
 export default function RootLayout({
   children,

@@ -46,7 +46,7 @@ package-dir = { "" = "packages/context-model/src" }
 where = ["packages/context-model/src"]
 
 [tool.pytest.ini_options]
-addopts = "--strict-config --strict-markers --cov=threadline --cov-report=term-missing --cov-fail-under=90"
+addopts = "--strict-config --strict-markers --cov=packages/context-model/src/threadline --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]
 
 [tool.coverage.run]

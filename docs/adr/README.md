@@ -18,6 +18,7 @@ ADRs are immutable once accepted. A later decision supersedes an earlier record 
 | 012 | Stable context identity and deterministic semantic differences | Accepted |
 | 013 | Bounded evidence-bound code graph | Accepted |
 | 014 | Explicit, reviewable, client-neutral local product workflows | Accepted |
+| 015 | Command-executed, content-bound local evidence | Accepted |
 
-ADRs 001–006 were accepted on 2026-08-11; ADRs 007–014 were accepted on 2026-08-12. These
+ADRs 001–006 were accepted on 2026-08-11; ADRs 007–015 were accepted on 2026-08-12. These
 establish the current trust invariants; measurements may cause later superseding ADRs.

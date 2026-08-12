@@ -30,7 +30,7 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- fourteen architecture decision records and a threat model;
+- fifteen architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
 - a strict, committed `threadline.json` contract for arbitrary local repositories;
 - explicit `init` and `sync` commands with refusal of uncommitted context configuration;
@@ -208,6 +208,24 @@ client-neutral handoff for a terminal or any model:
 /path/to/threadline/.venv/bin/threadline handoff .
 # add --format json for machine-readable output
 ```
+
+For checks that must become stronger than an agent observation, run the real command through
+Threadline and name the files its result covers:
+
+```bash
+/path/to/threadline/.venv/bin/threadline check . \
+  --scope FULL \
+  --include src/parser.py \
+  --include tests/test_parser.py \
+  -- python -m pytest -q
+```
+
+The command writes a reviewable report containing the exit status, duration, runner, output digest,
+and exact hashes of the included files. Raw stdout, stderr, environment values, likely secret
+arguments, and inline command bodies are not persisted. The report becomes verifiable evidence only
+after it is committed with those exact files and Threadline synchronizes that commit. A focused
+check remains insufficient for an “all tests passed” claim, and a failed command remains visibly
+contradicted.
 
 Every client can call `get_workspace_status` first to discover the bound task, branch, commit, and
 handoff freshness. The remaining tools require that exact identity and refuse another task or stale

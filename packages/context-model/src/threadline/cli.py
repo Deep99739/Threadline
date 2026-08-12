@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import uvicorn
 
 from threadline.api import create_app
 from threadline.client_profiles import build_client_profiles, connect_client
+from threadline.command_evidence import run_and_record_check
 from threadline.demo import default_demo_repository, prepare_demo_repository, run_demo
 from threadline.manifest import initialize_manifest
 from threadline.mcp_runtime import serve_demo_mcp, serve_workspace_mcp
@@ -84,6 +86,14 @@ def _parser() -> argparse.ArgumentParser:
     handoff.add_argument("--database-url")
     handoff.add_argument("--format", choices=("markdown", "json"), default="markdown")
 
+    check = subparsers.add_parser(
+        "check", help="run an approved command and record content-bound result evidence"
+    )
+    check.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    check.add_argument("--include", action="append", required=True)
+    check.add_argument("--scope", choices=("FULL", "FOCUSED"), default="FOCUSED")
+    check.add_argument("--timeout", type=int, default=300)
+
     prepare = subparsers.add_parser(
         "prepare-demo", help="create the synthetic Git continuation repository"
     )
@@ -114,7 +124,13 @@ def _database_url(explicit: str | None) -> str:
 
 
 def main(arguments: Sequence[str] | None = None) -> None:
-    parsed = _parser().parse_args(arguments)
+    raw_arguments = list(arguments) if arguments is not None else sys.argv[1:]
+    check_command: tuple[str, ...] = ()
+    if raw_arguments[:1] == ["check"] and "--" in raw_arguments:
+        separator = raw_arguments.index("--")
+        check_command = tuple(raw_arguments[separator + 1 :])
+        raw_arguments = raw_arguments[:separator]
+    parsed = _parser().parse_args(raw_arguments)
     if parsed.command == "migrate":
         upgrade_database(_database_url(parsed.database_url))
         print("Threadline schema is current.")
@@ -217,6 +233,20 @@ def main(arguments: Sequence[str] | None = None) -> None:
             if parsed.format == "json"
             else render_handoff_markdown(content),
             end="\n" if parsed.format == "json" else "",
+        )
+        return
+    if parsed.command == "check":
+        print(
+            json.dumps(
+                run_and_record_check(
+                    parsed.repository,
+                    command=check_command,
+                    include_paths=tuple(parsed.include),
+                    scope=parsed.scope,
+                    timeout_seconds=parsed.timeout,
+                ),
+                indent=2,
+            )
         )
         return
     if parsed.command == "prepare-demo":

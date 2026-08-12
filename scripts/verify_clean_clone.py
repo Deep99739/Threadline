@@ -239,6 +239,44 @@ def _verify_clean_clone() -> None:
         synchronized = json.loads(
             _run([str(threadline), "sync", str(repository)], cwd=checkout)
         )
+        checked = json.loads(
+            _run(
+                [
+                    str(threadline),
+                    "check",
+                    str(repository),
+                    "--scope",
+                    "FULL",
+                    "--include",
+                    "parser.py",
+                    "--",
+                    str(python),
+                    "-c",
+                    "raise SystemExit(0)",
+                ],
+                cwd=checkout,
+            )
+        )
+        _git(repository, "add", "parser.py", "threadline.json", "threadline/test-report.json")
+        _git(
+            repository,
+            "-c",
+            "user.name=Threadline Clean Clone",
+            "-c",
+            "user.email=clean-clone@example.invalid",
+            "commit",
+            "-m",
+            "Record parser verification",
+        )
+        synchronized = json.loads(
+            _run([str(threadline), "sync", str(repository)], cwd=checkout)
+        )
+        verified_handoff = json.loads(
+            _run(
+                [str(threadline), "handoff", str(repository), "--format", "json"],
+                cwd=checkout,
+            )
+        )
         mcp = json.loads(
             _run(
                 [
@@ -265,6 +303,10 @@ def _verify_clean_clone() -> None:
             raise RuntimeError("Clean-clone terminal handoff omitted evidence")
         if not connected["changed"] or "threadline" not in cursor_profile["mcpServers"]:
             raise RuntimeError("Clean-clone client connection was not written safely")
+        if checked["status"] != "PASSED" or checked["raw_output_persisted"]:
+            raise RuntimeError("Clean-clone command evidence did not preserve its trust contract")
+        if not verified_handoff["verified_completed_work"]:
+            raise RuntimeError("Clean-clone handoff omitted committed command verification")
         if _git(repository, "status", "--porcelain=v1", "--untracked-files=all"):
             raise RuntimeError("Threadline dirtied the clean-clone user repository")
         if not (repository / ".git" / "threadline" / "threadline.db").is_file():
@@ -285,6 +327,10 @@ def _verify_clean_clone() -> None:
                     "doctor_ready": diagnosed["ready"],
                     "terminal_handoff_cited": "repo://" in rendered_handoff,
                     "connected_client": connected["client"],
+                    "command_evidence_status": checked["status"],
+                    "verified_work_count": len(
+                        verified_handoff["verified_completed_work"]
+                    ),
                     "mcp": mcp,
                     "working_tree_clean": True,
                     "api_keys_required": False,

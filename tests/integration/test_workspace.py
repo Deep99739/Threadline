@@ -170,6 +170,9 @@ def test_client_profiles_are_project_scoped_reviewable_and_secret_free(tmp_path:
     assert clients["vscode"]["content"]["servers"]["threadline"]["type"] == "stdio"
     assert clients["antigravity"]["path"] == ".agents/mcp_config.json"
     assert clients["claude"]["path"] == ".mcp.json"
+    assert profiles["server"]["local_database"] == str(
+        root / ".git" / "threadline" / "threadline.db"
+    )
     codex = tomllib.loads(clients["codex"]["content"])["mcp_servers"]["threadline"]
     assert codex["args"][-2:] == ["--repository", str(root)]
     assert codex["cwd"] == str(root)

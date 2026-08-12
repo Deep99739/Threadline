@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from threadline.git_repository import threadline_git_state_path
 from threadline.workspace import LocalWorkspace, load_local_workspace
 
 OFFICIAL_DOCUMENTATION = {
@@ -75,9 +76,7 @@ def build_client_profiles(
             **server,
             "transport": "stdio",
             "tools": "read-only",
-            "local_database": str(
-                workspace.repository_path / ".threadline" / "threadline.db"
-            ),
+            "local_database": str(threadline_git_state_path(workspace.repository_path)),
         },
         "clients": {
             "codex": {
@@ -140,4 +139,80 @@ def build_client_profiles(
                 "profile for the client you trust."
             ),
         },
+    }
+
+
+def _merge_json(current: dict[str, Any], addition: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(current)
+    for key, value in addition.items():
+        existing = merged.get(key)
+        if isinstance(existing, dict) and isinstance(value, dict):
+            merged[key] = _merge_json(existing, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def connect_client(
+    repository_path: Path,
+    client_name: str,
+    *,
+    python_executable: Path | None = None,
+) -> dict[str, Any]:
+    """Write one explicitly requested project profile without touching global settings."""
+
+    profiles = build_client_profiles(
+        repository_path,
+        python_executable=python_executable,
+    )
+    clients = profiles["clients"]
+    if client_name not in clients:
+        supported = ", ".join(sorted(clients))
+        raise ValueError(f"unsupported client {client_name!r}; choose one of: {supported}")
+
+    root = Path(str(profiles["repository"]))
+    profile = clients[client_name]
+    target = root / str(profile["path"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if client_name == "codex":
+        addition = str(profile["content"])
+        if target.exists():
+            current = target.read_text(encoding="utf-8")
+            if "[mcp_servers.threadline]" in current:
+                raise FileExistsError(
+                    "Codex already has a project Threadline entry; review it before replacing"
+                )
+            if current and not current.endswith("\n"):
+                current += "\n"
+            rendered = current + ("\n" if current else "") + addition
+        else:
+            rendered = addition
+    else:
+        addition_payload = profile["content"]
+        if not isinstance(addition_payload, dict):
+            raise TypeError("client JSON profile is not an object")
+        if target.exists():
+            existing_payload = json.loads(target.read_text(encoding="utf-8"))
+            if not isinstance(existing_payload, dict):
+                raise ValueError(f"existing client configuration is not an object: {target}")
+        else:
+            existing_payload = {}
+        rendered = json.dumps(_merge_json(existing_payload, addition_payload), indent=2) + "\n"
+
+    previous = target.read_text(encoding="utf-8") if target.exists() else None
+    changed = previous != rendered
+    if changed:
+        target.write_text(rendered, encoding="utf-8")
+    return {
+        "client": client_name,
+        "path": str(target),
+        "changed": changed,
+        "scope": "project",
+        "contains_secrets": False,
+        "tools": "read-only",
+        "next_steps": [
+            f"Review and commit {target.relative_to(root)} if the team should share it.",
+            "Run threadline doctor . to confirm the exact handoff is current.",
+            "Open the client and approve the local MCP server when prompted.",
+        ],
     }

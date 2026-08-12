@@ -30,7 +30,7 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- thirteen architecture decision records and a threat model;
+- fourteen architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
 - a strict, committed `threadline.json` contract for arbitrary local repositories;
 - explicit `init` and `sync` commands with refusal of uncommitted context configuration;
@@ -172,6 +172,42 @@ Codex desktop, CLI, and its IDE extension share Codex MCP configuration on the s
 project profile is used by both its IDE and CLI. The generated server command is exercised through
 the official MCP client in Threadline's test suite. Final trust acceptance still happens inside the
 chosen proprietary client.
+
+For the shortest explicit setup, write only the profile you intend to use:
+
+```bash
+/path/to/threadline/.venv/bin/threadline connect codex .
+# or: claude, cursor, vscode, antigravity
+```
+
+This touches only that client's project file. It preserves unrelated JSON MCP servers and refuses
+to replace an existing Codex Threadline section. Review and commit the generated project file only
+if you want the team to share it; Threadline never changes global client settings.
+
+Diagnose whether the repository, database, and compiled handoff agree:
+
+```bash
+/path/to/threadline/.venv/bin/threadline doctor .
+```
+
+When an agent or developer reaches a handoff point, record the observation and next action without
+pretending the statement is verified:
+
+```bash
+/path/to/threadline/.venv/bin/threadline checkpoint . \
+  --statement "The parser change is implemented; integration coverage is still missing" \
+  --next-action "Add and run the whitespace integration test"
+```
+
+Threadline marks this text `ASSERTED`, lists the code and manifest paths that should be reviewed and
+committed together, and does not stage or commit anything. After that commit, sync and print a
+client-neutral handoff for a terminal or any model:
+
+```bash
+/path/to/threadline/.venv/bin/threadline sync .
+/path/to/threadline/.venv/bin/threadline handoff .
+# add --format json for machine-readable output
+```
 
 Every client can call `get_workspace_status` first to discover the bound task, branch, commit, and
 handoff freshness. The remaining tools require that exact identity and refuse another task or stale

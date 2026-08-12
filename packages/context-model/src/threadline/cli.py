@@ -11,11 +11,17 @@ from pathlib import Path
 import uvicorn
 
 from threadline.api import create_app
-from threadline.client_profiles import build_client_profiles
+from threadline.client_profiles import build_client_profiles, connect_client
 from threadline.demo import default_demo_repository, prepare_demo_repository, run_demo
 from threadline.manifest import initialize_manifest
 from threadline.mcp_runtime import serve_demo_mcp, serve_workspace_mcp
 from threadline.migrations import upgrade_database
+from threadline.product_workflow import (
+    checkpoint_workspace,
+    handoff_content,
+    inspect_workspace,
+    render_handoff_markdown,
+)
 from threadline.workspace import sync_local_workspace
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://threadline:threadline_local@localhost:55432/threadline"
@@ -47,6 +53,36 @@ def _parser() -> argparse.ArgumentParser:
     )
     clients.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
     clients.add_argument("--python-executable", type=Path)
+
+    connect = subparsers.add_parser(
+        "connect", help="write one explicitly selected project-scoped MCP profile"
+    )
+    connect.add_argument(
+        "client",
+        choices=("codex", "claude", "cursor", "vscode", "antigravity"),
+    )
+    connect.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    connect.add_argument("--python-executable", type=Path)
+
+    doctor = subparsers.add_parser(
+        "doctor", help="diagnose whether a repository has a current trusted handoff"
+    )
+    doctor.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+
+    checkpoint = subparsers.add_parser(
+        "checkpoint", help="record a reviewable asserted observation and next action"
+    )
+    checkpoint.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    checkpoint.add_argument("--statement", required=True)
+    checkpoint.add_argument("--next-action", required=True)
+    checkpoint.add_argument("--actor", choices=("AGENT", "HUMAN"), default="AGENT")
+
+    handoff = subparsers.add_parser(
+        "handoff", help="print the exact current cited handoff for any terminal client"
+    )
+    handoff.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    handoff.add_argument("--database-url")
+    handoff.add_argument("--format", choices=("markdown", "json"), default="markdown")
 
     prepare = subparsers.add_parser(
         "prepare-demo", help="create the synthetic Git continuation repository"
@@ -138,6 +174,49 @@ def main(arguments: Sequence[str] | None = None) -> None:
                 ),
                 indent=2,
             )
+        )
+        return
+    if parsed.command == "connect":
+        print(
+            json.dumps(
+                connect_client(
+                    parsed.repository,
+                    parsed.client,
+                    python_executable=parsed.python_executable,
+                ),
+                indent=2,
+            )
+        )
+        return
+    if parsed.command == "doctor":
+        report = inspect_workspace(parsed.repository)
+        print(json.dumps(report, indent=2))
+        if not report["ready"]:
+            raise SystemExit(1)
+        return
+    if parsed.command == "checkpoint":
+        print(
+            json.dumps(
+                checkpoint_workspace(
+                    parsed.repository,
+                    statement=parsed.statement,
+                    next_action=parsed.next_action,
+                    actor=parsed.actor,
+                ),
+                indent=2,
+            )
+        )
+        return
+    if parsed.command == "handoff":
+        content = handoff_content(
+            parsed.repository,
+            database_url=parsed.database_url,
+        )
+        print(
+            json.dumps(content, indent=2, default=str)
+            if parsed.format == "json"
+            else render_handoff_markdown(content),
+            end="\n" if parsed.format == "json" else "",
         )
         return
     if parsed.command == "prepare-demo":

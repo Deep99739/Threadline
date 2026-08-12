@@ -22,6 +22,15 @@ def _repository_relative(value: str) -> str:
     return path.as_posix()
 
 
+def _repository_glob(value: str) -> str:
+    path = PurePosixPath(value)
+    if path.is_absolute() or ".." in path.parts or value in {"", "."} or "\\" in value:
+        raise ValueError("exclusions must be non-empty repository-relative glob patterns")
+    if value == MANIFEST_PATH:
+        raise ValueError(f"{MANIFEST_PATH} cannot be excluded")
+    return value
+
+
 class ManifestContract(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -131,6 +140,12 @@ class ProjectManifest(ManifestContract):
     constraints: tuple[ConstraintManifest, ...] = ()
     observations: tuple[ObservationManifest, ...] = ()
     verifiers: tuple[VerifierManifest, ...] = ()
+    evidence_exclusions: tuple[str, ...] = ()
+
+    @field_validator("evidence_exclusions")
+    @classmethod
+    def validate_evidence_exclusions(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(_repository_glob(value) for value in values)
 
 
 def manifest_from_git_snapshot(snapshot: GitSnapshot) -> ProjectManifest:

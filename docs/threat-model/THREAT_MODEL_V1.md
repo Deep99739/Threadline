@@ -46,8 +46,8 @@ Repository files, comments, issue text, model output, webhook payloads, and clie
 |---|---|---|---|
 | Cross-tenant edge or query | Confidentiality breach | tenant on every row/edge; RLS; composite keys; scoped queries | property/unit tests now; DB adversarial suite Phase 4 |
 | Post-retrieval permission filtering | Candidate/model/cache leak | resolve provider ACL before every retriever | architecture test and retriever interface review |
-| Prompt injection in code/README/issue | Policy bypass, unsafe write | treat evidence as data; tool policy outside model; approval boundary | injection eval cases 016–017 |
-| Secret enters index/log/model | Credential compromise | exclusions, scanner, quarantine, redaction, minimal telemetry | secret eval case 018; scanner in Phase 4 |
+| Prompt injection in code/README/issue | Policy bypass, unsafe write | treat evidence as data; tool policy outside model; approval boundary | injection eval cases 016–017; executed local boundary case |
+| Secret enters index/log/model | Credential compromise | exclusions, scanner, quarantine, redaction, minimal telemetry | secret eval case 018; executed local redaction case |
 | Agent self-verifies completion | Incorrect context/unsafe continuation | deterministic/human verifier only; persisted evidence | context invariant tests and cases 002–003 |
 | Webhook spoof/replay/order | Corrupt project state | signature/timestamp, idempotency, raw immutable event, reconciliation | cases 019–022; integration tests Phase 3 |
 | Cache key omits scope/version | Data leak or stale context | tenant/repo/actor/policy/version-qualified keys | cache isolation tests Phase 4 |
@@ -81,7 +81,8 @@ P0 handling: immediately contain serving/credentials, preserve audit evidence, d
 
 ## 8. Known current limitations
 
-- No hosted authentication, database RLS, provider connector, secret scanner, or remote MCP exists yet.
+- No hosted authentication, database RLS, provider connector, remote MCP, maintained provider-grade secret scanner, or quarantine workflow exists yet.
+- The local slice now has reviewable path exclusions, bounded known-secret redaction, served-content hashes, and explicit untrusted-repository instruction signals.
 - The threat controls above are design requirements, not deployed claims.
 - The current foundation proves in-memory cross-entity invariants and freezes security eval cases.
 - External or private repositories must not be connected until the Phase 4 gates pass.

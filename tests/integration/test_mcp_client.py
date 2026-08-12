@@ -200,6 +200,9 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         evidence = evidence_result.structured_content
         assert evidence["status"] == "ok"
         assert evidence["data"]["content"]
+        assert evidence["data"]["served_content_hash"].startswith("sha256:")
+        assert evidence["data"]["content_trust"] == "untrusted_repository_data"
+        assert evidence["warnings"]
 
         denied_evidence = await client.call_tool(
             "get_evidence",

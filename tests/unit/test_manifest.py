@@ -101,3 +101,36 @@ def test_manifest_rejects_unknown_verifier_fields() -> None:
 
     with pytest.raises(ValidationError, match="Extra inputs"):
         ProjectManifest.model_validate_json(json.dumps(payload))
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    ["../private/*", "/absolute/*", ".", "threadline.json", "private\\*"],
+)
+def test_manifest_rejects_unsafe_evidence_exclusions(pattern: str) -> None:
+    payload = {
+        "task": {
+            "objective": "Continue safely",
+            "next_action": "Inspect parser",
+            "query": "parser",
+        },
+        "evidence_exclusions": [pattern],
+    }
+
+    with pytest.raises(ValidationError, match=r"exclud|repository-relative"):
+        ProjectManifest.model_validate(payload)
+
+
+def test_manifest_accepts_reviewable_repository_exclusions() -> None:
+    manifest = ProjectManifest.model_validate(
+        {
+            "task": {
+                "objective": "Continue safely",
+                "next_action": "Inspect parser",
+                "query": "parser",
+            },
+            "evidence_exclusions": ["private/*", "fixtures/**/*.json"],
+        }
+    )
+
+    assert manifest.evidence_exclusions == ("private/*", "fixtures/**/*.json")

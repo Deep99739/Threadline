@@ -186,6 +186,7 @@ def evidence_from_git_file(
     workspace_id: UUID,
     actor_id: UUID,
     repository_version: RepositoryVersion,
+    sensitivity: str = "INTERNAL",
 ) -> Evidence:
     evidence_type = {
         "threadline.json": "PROJECT_MANIFEST",
@@ -204,4 +205,5 @@ def evidence_from_git_file(
             content_hash=git_file.content_hash,
         ),
         captured_at=utc_now(),
+        sensitivity=sensitivity,
     )

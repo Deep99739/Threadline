@@ -7,6 +7,7 @@ from pathlib import Path
 from uuid import UUID, uuid5
 
 from threadline.code_graph import CODE_GRAPH_NAMESPACE, extract_code_graph
+from threadline.evidence_safety import path_is_excluded, safe_git_file
 from threadline.git_repository import (
     GitSnapshot,
     evidence_from_git_file,
@@ -89,7 +90,14 @@ def ingest_local_repository(
 ) -> IngestionResult:
     git_snapshot = read_git_snapshot(path, repository_id)
     manifest: ProjectManifest = manifest_from_git_snapshot(git_snapshot)
-    file_by_path = {item.path: item for item in git_snapshot.files}
+    scoped_files = tuple(
+        item
+        for item in git_snapshot.files
+        if item.path == "threadline.json"
+        or not path_is_excluded(item.path, manifest.evidence_exclusions)
+    )
+    file_by_path = {item.path: item for item in scoped_files}
+    safe_content_by_path = {item.path: safe_git_file(item) for item in scoped_files}
     evidence_by_path = {
         item.path: evidence_from_git_file(
             item,
@@ -97,8 +105,11 @@ def ingest_local_repository(
             workspace_id=workspace_id,
             actor_id=actor_id,
             repository_version=git_snapshot.repository_version,
+            sensitivity=(
+                "REDACTED" if safe_content_by_path[item.path].redacted else "INTERNAL"
+            ),
         )
-        for item in git_snapshot.files
+        for item in scoped_files
     }
     manifest_evidence = evidence_by_path["threadline.json"]
     task = Task(
@@ -182,7 +193,7 @@ def ingest_local_repository(
         item.verification for item in verified_claims if item.verification is not None
     )
     code_graph = extract_code_graph(
-        git_snapshot.files,
+        scoped_files,
         evidence_by_path,
         tenant_id=tenant_id,
         workspace_id=workspace_id,
@@ -286,7 +297,8 @@ def ingest_local_repository(
     store.save_snapshot(
         snapshot,
         evidence_content={
-            evidence_by_path[path].id: git_file.content for path, git_file in file_by_path.items()
+            evidence_by_path[path].id: safe_content_by_path[path].content
+            for path in file_by_path
         },
     )
     return IngestionResult(snapshot=snapshot, git_snapshot=git_snapshot)

@@ -104,6 +104,9 @@ def test_cited_evidence_can_be_opened_but_unscoped_evidence_cannot(
     assert cited.status_code == 200
     assert cited.json()["evidence_id"] == evidence_id
     assert cited.json()["content"]
+    assert cited.json()["served_content_hash"].startswith("sha256:")
+    assert cited.json()["content_trust"] == "untrusted_repository_data"
+    assert cited.json()["redacted"] is False
     assert missing.status_code == 404
 
 

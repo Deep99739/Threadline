@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -135,10 +136,16 @@ def create_app(
             workspace_id=DEMO_WORKSPACE_ID,
             evidence_ids=[evidence_id],
         )
+        served_content = content[evidence_id]
         return {
             "evidence_id": str(item.id),
             "locator": item.locator.model_dump(mode="json"),
-            "content": content[evidence_id],
+            "content": served_content,
+            "served_content_hash": (
+                f"sha256:{hashlib.sha256(served_content.encode()).hexdigest()}"
+            ),
+            "redacted": item.sensitivity == "REDACTED",
+            "content_trust": "untrusted_repository_data",
         }
 
     @app.get("/api/decisions/{decision_ref}")

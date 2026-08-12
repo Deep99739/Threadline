@@ -28,7 +28,7 @@ export type ProofPayload = {
 export const bundledProof: ProofPayload = {
   report: "threadline-executed-continuation-benchmark-v0.2",
   dataset: "executed-synthetic-v0.2",
-  sample_size: 9,
+  sample_size: 11,
   repository_count: 5,
   cases: [
     {
@@ -104,11 +104,29 @@ export const bundledProof: ProofPayload = {
       observed: "tool error",
       failure_layer: null,
     },
+    {
+      id: "EXEC-010",
+      title: "Redact a known credential before evidence storage",
+      passed: true,
+      expected: "credential absent; adjacent retry configuration retained",
+      observed: "credential absent; retry configuration retained",
+      failure_layer: null,
+    },
+    {
+      id: "EXEC-011",
+      title: "Keep instruction-shaped repository text outside the trust boundary",
+      passed: true,
+      expected: "override, scope-expansion, and self-approval signals",
+      observed: "override_instructions, scope_expansion, self_approval",
+      failure_layer: null,
+    },
   ],
   metrics: {
-    regression_cases_passed: { correct: 9, total: 9, rate: 1 },
+    regression_cases_passed: { correct: 11, total: 11, rate: 1 },
     required_abstention_accuracy: { correct: 2, total: 2, rate: 1 },
     unsupported_completion_false_acceptance: { accepted: 0, total: 1, rate: 0 },
+    known_secret_exposure: { accepted: 0, total: 1, rate: 0 },
+    instruction_boundary_detection: { correct: 1, total: 1, rate: 1 },
   },
   limits: [
     "All cases are deterministic and synthetic.",
@@ -116,5 +134,5 @@ export const bundledProof: ProofPayload = {
     "No external repository, human reviewer, or proprietary agent client was used.",
   ],
   claim_boundary:
-    "Nine deterministic synthetic regression cases; not an external accuracy, adoption, or production claim.",
+    "Eleven deterministic synthetic regression cases; not an external accuracy, adoption, or production claim.",
 };

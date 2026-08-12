@@ -30,7 +30,7 @@ slice:
 - external JSON Schema contracts;
 - thirty frozen continuation, safety, and reliability cases;
 - a deterministic synthetic demo repository;
-- fifteen architecture decision records and a threat model;
+- sixteen architecture decision records and a threat model;
 - exact-commit Git ingestion for tracked text evidence;
 - a strict, committed `threadline.json` contract for arbitrary local repositories;
 - explicit `init` and `sync` commands with refusal of uncommitted context configuration;
@@ -49,8 +49,11 @@ slice:
   re-verifies the resulting repository state;
 - an executable primary-scenario evaluation with raw baseline outcomes and disclosed limits;
 - an executable lexical-versus-graph ablation with raw relationship evidence and disclosed limits;
-- a nine-case executed continuation benchmark covering the MCP Agent B path, unsupported completion,
-  citations, dirty and moved repository refusal, command evidence, graph recovery, and scope denial;
+- an eleven-case executed continuation benchmark covering the MCP Agent B path, unsupported
+  completion, citations, dirty and moved repository refusal, command evidence, graph recovery,
+  scope denial, known-secret redaction, and instruction-boundary signals;
+- reviewable evidence path exclusions, known-secret redaction before storage, served-content hashes,
+  and explicit untrusted-repository warnings on MCP evidence reads;
 - explicit Alembic migrations and tenant-scoped PostgreSQL storage;
 - a repeatable synthetic CLI demo whose failure outcome comes from the real verifier path;
 - a read-only HTTP demo surface over that exact compiled handoff;
@@ -121,7 +124,7 @@ make web
 
 Open `http://localhost:3000`. The website connects to the read-only demo API at
 `http://localhost:8000`; if that API is unavailable, it remains usable as an explicitly labelled
-bundled synthetic snapshot. The executed-proof section reads the retained nine-case report from
+bundled synthetic snapshot. The executed-proof section reads the retained eleven-case report from
 `evals/results/continuation-benchmark-v0.2.json`; it does not turn that synthetic report into an
 external accuracy, adoption, or production claim.
 
@@ -159,6 +162,14 @@ not dirty the working tree or require a project-wide ignore rule. The committed 
 task context only; it does not invent verified claims. Add deterministic verifier entries only for
 claims that the repository can actually prove. PostgreSQL remains available through
 `THREADLINE_DATABASE_URL` for shared or deployed environments.
+
+If a tracked path should never enter evidence, retrieval, the code graph, or citations, add a
+reviewable repository-relative glob to `evidence_exclusions` in `threadline.json`, then commit the
+manifest. Included text passes through bounded known-secret redaction before evidence content is
+stored or served. MCP evidence is always labelled as untrusted repository data, and instruction-like
+text cannot alter the server's task, repository, policy, permission, or approval scope. The local
+scanner covers known credential shapes; it is not a replacement for a maintained provider scanner or
+hosted quarantine workflow.
 
 Print reviewable project profiles for local coding clients:
 
@@ -260,13 +271,13 @@ test-to-class `CONSTRUCTS` edge with exact source citations. The raw point-in-ti
 in [`evals/results/phase2-graph-ablation.json`](./evals/results/phase2-graph-ablation.json). Its
 single synthetic case is not presented as a general accuracy or scale claim.
 
-`make continuation-benchmark` executes nine synthetic regression cases across five temporary Git
+`make continuation-benchmark` executes eleven synthetic regression cases across five temporary Git
 repositories. The primary case has Agent B consume the handoff through the official MCP client,
 change code, run the full suite, commit, observe refusal of the old handoff, and receive a current
 verified handoff. The remaining cases exercise unsupported completion, citation resolution, dirty
-and moved repository abstention, passing and failing command evidence, typed graph recovery, and
-wrong-task scope denial. Raw per-case outcomes, baseline failures, denominators, and limitations are
-retained in
+and moved repository abstention, passing and failing command evidence, typed graph recovery,
+wrong-task scope denial, known-secret redaction, and repository-instruction boundary signals. Raw
+per-case outcomes, baseline failures, denominators, and limitations are retained in
 [`evals/results/continuation-benchmark-v0.2.json`](./evals/results/continuation-benchmark-v0.2.json).
 This is a deterministic synthetic regression benchmark, not an external accuracy or adoption claim.
 

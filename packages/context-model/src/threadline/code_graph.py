@@ -495,6 +495,28 @@ def _resolve_target(
     return None
 
 
+def _merge_logical_symbols(symbols: list[_ParsedSymbol]) -> list[_ParsedSymbol]:
+    """Represent overloads and repeated declarations as one logical code symbol."""
+
+    merged: dict[str, _ParsedSymbol] = {}
+    for symbol in symbols:
+        existing = merged.get(symbol.logical_key)
+        if existing is None:
+            merged[symbol.logical_key] = symbol
+            continue
+        merged[symbol.logical_key] = _ParsedSymbol(
+            logical_key=symbol.logical_key,
+            language=symbol.language,
+            path=symbol.path,
+            qualified_name=symbol.qualified_name,
+            symbol_kind=symbol.symbol_kind,
+            line_start=min(existing.line_start, symbol.line_start),
+            line_end=max(existing.line_end, symbol.line_end),
+            evidence_id=symbol.evidence_id,
+        )
+    return list(merged.values())
+
+
 def extract_code_graph(
     files: tuple[GitFile, ...],
     evidence_by_path: dict[str, Evidence],
@@ -531,6 +553,7 @@ def extract_code_graph(
         parsed_dependencies.extend(file_dependencies)
         parsed_diagnostics.append((git_file.path, language, status, error_lines, evidence.id))
 
+    parsed_symbols = _merge_logical_symbols(parsed_symbols)
     symbol_by_key = {item.logical_key: item for item in parsed_symbols}
     simple_names: dict[str, list[_ParsedSymbol]] = defaultdict(list)
     modules: dict[str, _ParsedSymbol] = {}

@@ -146,6 +146,28 @@ def test_exact_snapshot_produces_stable_entity_ids() -> None:
     ]
 
 
+def test_overloads_are_one_logical_symbol_with_a_complete_source_range() -> None:
+    source = _file(
+        "serializer.py",
+        "from typing import overload\n\n"
+        "@overload\n"
+        "def loads(value: str) -> str: ...\n\n"
+        "@overload\n"
+        "def loads(value: bytes) -> bytes: ...\n\n"
+        "def loads(value: str | bytes) -> str | bytes:\n"
+        "    return value\n",
+    )
+
+    result = _extract(source)
+
+    loads = [item for item in result.symbols if item.qualified_name == "serializer.loads"]
+    assert len(loads) == 1
+    assert loads[0].logical_key == "symbol:serializer.py:serializer.loads"
+    assert loads[0].line_start == 4
+    assert loads[0].line_end == 10
+    assert len({item.logical_key for item in result.symbols}) == len(result.symbols)
+
+
 def test_isolates_a_native_failure_on_a_large_tsx_product_surface() -> None:
     rows = "\n".join(
         f"<button onClick={{() => inspectSource('src/{index}.ts')}}>Row {index}</button>"

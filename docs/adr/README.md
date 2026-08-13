@@ -23,7 +23,8 @@ ADRs are immutable once accepted. A later decision supersedes an earlier record 
 | 017 | Isolate native code parsing and fail with explicit unknowns | Accepted |
 | 018 | One-command guarded local onboarding | Accepted |
 | 019 | Separate context compilation from read-only consumption | Accepted |
+| 020 | Refresh context after Git transitions through guarded local hooks | Accepted |
 
 ADRs 001–006 were accepted on 2026-08-11; ADRs 007–016 were accepted on 2026-08-12; ADR 017 was
-accepted on 2026-08-13, followed by ADRs 018–019. These establish the current trust invariants;
+accepted on 2026-08-13, followed by ADRs 018–020. These establish the current trust invariants;
 measurements may cause later superseding ADRs.

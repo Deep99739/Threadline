@@ -157,12 +157,30 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
     assert result["requires_api_key"] is False
     assert result["client"]["changed"] is True
     assert result["client"]["excluded_locally"] is True
+    assert result["refresh_hooks"]["automatic_refresh"] is True
+    assert set(result["refresh_hooks"]["installed"]) == {
+        "post-checkout",
+        "post-commit",
+        "post-merge",
+        "post-rewrite",
+    }
     assert (root / ".codex" / "config.toml").is_file()
     assert (root / ".git" / "threadline" / "threadline.db").is_file()
     assert git(root, "log", "-1", "--pretty=%s") == "Add Threadline context"
     assert git(root, "ls-files", "threadline.json") == "threadline.json"
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
     assert inspect_workspace(root)["ready"] is True
+
+    (root / "parser.py").write_text(
+        "def parse(value: str) -> str:\n    return value.strip().lower()\n",
+        encoding="utf-8",
+    )
+    git(root, "add", "parser.py")
+    git(root, "commit", "-m", "Normalize parser output")
+
+    refreshed = inspect_workspace(root)
+    assert refreshed["ready"] is True
+    assert refreshed["repository"]["commit"] == git(root, "rev-parse", "HEAD")
 
     repeated = onboard_workspace(
         root,
@@ -175,7 +193,47 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
     assert repeated["ready"] is True
     assert repeated["commit_created"] is None
     assert repeated["client"]["changed"] is False
+    assert repeated["refresh_hooks"]["installed"] == []
+    assert set(repeated["refresh_hooks"]["existing"]) == {
+        "post-checkout",
+        "post-commit",
+        "post-merge",
+        "post-rewrite",
+    }
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+
+def test_onboard_preserves_an_existing_git_hook_and_reports_manual_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = tmp_path / "hooked-project"
+    root.mkdir()
+    git(root, "init", "-b", "main")
+    git(root, "config", "user.name", "Repository Owner")
+    git(root, "config", "user.email", "owner@example.invalid")
+    (root / "README.md").write_text("# Hooked project\n", encoding="utf-8")
+    git(root, "add", "README.md")
+    git(root, "commit", "-m", "Initialize project")
+    existing_hook = root / ".git" / "hooks" / "post-commit"
+    existing_hook.write_text("#!/bin/sh\nprintf 'custom hook\\n'\n", encoding="utf-8")
+    existing_hook.chmod(0o755)
+
+    result = onboard_workspace(
+        root,
+        objective="Preserve project continuation",
+        next_action="Inspect the repository",
+        client="codex",
+        python_executable=Path(sys.executable),
+    )
+
+    assert result["ready"] is True
+    assert result["refresh_hooks"]["automatic_refresh"] is False
+    assert result["refresh_hooks"]["blocked"] == ["post-commit"]
+    assert existing_hook.read_text(encoding="utf-8") == (
+        "#!/bin/sh\nprintf 'custom hook\\n'\n"
+    )
 
 
 def test_onboard_refuses_existing_work_without_creating_product_files(tmp_path: Path) -> None:

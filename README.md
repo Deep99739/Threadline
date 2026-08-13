@@ -108,7 +108,9 @@ Onboarding requires a clean Git working tree. In one command, Threadline:
 - verifies that the repository is ready before returning.
 
 It uses your configured Git identity for the context commit and does not require an API key. Local
-derived state stays at `.git/threadline/threadline.db`.
+derived state stays at `.git/threadline/threadline.db`. Repository-local Git hooks refresh the
+handoff after commits, checkouts, merges, and rebases. Existing custom hooks are never replaced;
+when Threadline reports a hook conflict, run `threadline sync .` after the repository changes.
 
 Confirm or read the resulting handoff at any time:
 
@@ -125,7 +127,7 @@ workflows.
 Generate one project-scoped MCP profile:
 
 ```bash
-$THREADLINE connect codex .
+threadline connect codex .
 ```
 
 Supported values are:
@@ -137,7 +139,7 @@ codex  claude  cursor  vscode  antigravity
 To inspect every supported profile without writing a client configuration:
 
 ```bash
-$THREADLINE clients .
+threadline clients .
 ```
 
 Threadline changes only the selected project's configuration. It does not modify global client
@@ -148,7 +150,7 @@ settings or commit machine-specific runtime paths.
 Record an observation and the next action:
 
 ```bash
-$THREADLINE checkpoint . \
+threadline checkpoint . \
   --statement "The parser change is implemented; integration coverage is missing" \
   --next-action "Add and run the whitespace integration test"
 ```
@@ -156,20 +158,19 @@ $THREADLINE checkpoint . \
 Run a check and bind its result to the files it covers:
 
 ```bash
-$THREADLINE check . \
+threadline check . \
   --scope FULL \
   --include src/parser.py \
   --include tests/test_parser.py \
   -- python -m pytest -q
 ```
 
-Commit the work and generated evidence, then refresh the handoff:
+Commit the work and generated evidence, then read the automatically refreshed handoff:
 
 ```bash
 git add threadline.json threadline/ src/parser.py tests/test_parser.py
 git commit -m "Verify parser behavior"
-$THREADLINE sync .
-$THREADLINE handoff .
+threadline handoff .
 ```
 
 Use `threadline handoff . --format json` for machine-readable output.
@@ -211,7 +212,7 @@ The design decisions are documented in the [ADR index](./docs/adr/README.md). Se
 
 The repository contains reproducible evidence for the behaviors Threadline depends on:
 
-- 143 automated tests with a 90% coverage gate.
+- 144 automated tests with a 90% coverage gate.
 - 30 frozen continuation, conflict, freshness, retrieval, permission, injection, secret, ingestion, and degraded-mode cases.
 - An 11-case executed continuation benchmark covering cross-agent continuation, stale refusal, citation resolution, command evidence, scope denial, redaction, and instruction-boundary signals.
 - An end-to-end Agent B scenario that reads a handoff over MCP, changes code, runs tests, commits, observes stale refusal, and receives a newly verified handoff.

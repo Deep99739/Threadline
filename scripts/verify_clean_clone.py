@@ -217,6 +217,7 @@ def _verify_clean_clone() -> None:
             )
         )
         connected = onboarded["client"]
+        refresh_hooks = onboarded["refresh_hooks"]
         cursor_profile = json.loads(
             (repository / ".cursor" / "mcp.json").read_text(encoding="utf-8")
         )
@@ -249,9 +250,7 @@ def _verify_clean_clone() -> None:
             "-m",
             "Record parser verification",
         )
-        synchronized = json.loads(
-            _run([str(threadline), "sync", str(repository)], cwd=checkout)
-        )
+        synchronized = {"commit": _git(repository, "rev-parse", "HEAD")}
         verified_handoff = json.loads(
             _run(
                 [str(threadline), "handoff", str(repository), "--format", "json"],
@@ -284,6 +283,8 @@ def _verify_clean_clone() -> None:
             raise RuntimeError("Clean-clone terminal handoff omitted evidence")
         if not connected["changed"] or "threadline" not in cursor_profile["mcpServers"]:
             raise RuntimeError("Clean-clone client connection was not written safely")
+        if not refresh_hooks["automatic_refresh"] or len(refresh_hooks["installed"]) != 4:
+            raise RuntimeError("Clean-clone onboarding did not install automatic refresh hooks")
         if checked["status"] != "PASSED" or checked["raw_output_persisted"]:
             raise RuntimeError("Clean-clone command evidence did not preserve its trust contract")
         if not verified_handoff["verified_completed_work"]:
@@ -309,6 +310,7 @@ def _verify_clean_clone() -> None:
                     "doctor_ready": diagnosed["ready"],
                     "terminal_handoff_cited": "repo://" in rendered_handoff,
                     "connected_client": connected["client"],
+                    "automatic_refresh": refresh_hooks["automatic_refresh"],
                     "command_evidence_status": checked["status"],
                     "verified_work_count": len(
                         verified_handoff["verified_completed_work"]

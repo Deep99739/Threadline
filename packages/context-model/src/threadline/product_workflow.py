@@ -11,6 +11,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
 from threadline.client_profiles import connect_client
+from threadline.git_hooks import install_refresh_hooks
 from threadline.git_repository import (
     commit_exact_paths,
     read_git_working_state,
@@ -79,6 +80,10 @@ def onboard_workspace(
         client,
         python_executable=python_executable,
     )
+    hooks = install_refresh_hooks(
+        root,
+        python_executable=python_executable,
+    )
     report = inspect_workspace(root)
     if not report["ready"]:
         raise RuntimeError("onboarding did not produce a current trusted handoff")
@@ -89,6 +94,7 @@ def onboard_workspace(
         "commit_created": created_manifest_commit,
         "context_commit": synced.handoff.context_pack.repository_version.commit_sha,
         "client": connection,
+        "refresh_hooks": hooks,
         "requires_api_key": False,
         "first_action": f"Open {client} in this repository and ask for Threadline status.",
     }

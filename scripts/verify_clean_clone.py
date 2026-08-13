@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -251,6 +252,19 @@ def _verify_clean_clone() -> None:
             "Record parser verification",
         )
         synchronized = {"commit": _git(repository, "rev-parse", "HEAD")}
+        refresh_deadline = time.monotonic() + 15
+        refreshed = json.loads(
+            _run([str(threadline), "doctor", str(repository)], cwd=checkout)
+        )
+        while not refreshed["ready"] and time.monotonic() < refresh_deadline:
+            time.sleep(0.1)
+            refreshed = json.loads(
+                _run([str(threadline), "doctor", str(repository)], cwd=checkout)
+            )
+        if not refreshed["ready"]:
+            raise RuntimeError(
+                "Clean-clone automatic refresh did not finish within 15 seconds"
+            )
         verified_handoff = json.loads(
             _run(
                 [str(threadline), "handoff", str(repository), "--format", "json"],

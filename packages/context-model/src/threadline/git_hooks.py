@@ -120,3 +120,46 @@ def install_refresh_hooks(
             else "existing unmanaged hooks were left untouched; run threadline sync after commits"
         ),
     }
+
+
+def uninstall_refresh_hooks(repository_path: Path) -> dict[str, Any]:
+    """Remove only intact Threadline-owned hooks and preserve modified or foreign hooks."""
+
+    root = resolve_git_root(repository_path)
+    custom_path = _custom_hooks_path(root)
+    if custom_path is not None:
+        return {
+            "removed": [],
+            "preserved": [],
+            "blocked": list(HOOK_NAMES),
+            "reason": f"custom core.hooksPath is configured: {custom_path}",
+        }
+    hooks_path = _default_hooks_path(root)
+    removed: list[str] = []
+    preserved: list[str] = []
+    blocked: list[str] = []
+    for hook_name in HOOK_NAMES:
+        target = hooks_path / hook_name
+        if not target.is_file():
+            continue
+        content = target.read_text(encoding="utf-8", errors="replace")
+        if MANAGED_MARKER not in content:
+            preserved.append(hook_name)
+            continue
+        if not content.rstrip().endswith(
+            "# Continue so hooks installed later by other tools can also run."
+        ):
+            blocked.append(hook_name)
+            continue
+        target.unlink()
+        removed.append(hook_name)
+    return {
+        "removed": removed,
+        "preserved": preserved,
+        "blocked": blocked,
+        "reason": (
+            None
+            if not blocked
+            else "modified Threadline hooks were preserved for manual review"
+        ),
+    }

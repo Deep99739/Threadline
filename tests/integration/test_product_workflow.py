@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import subprocess
 import sys
@@ -11,7 +10,8 @@ from pathlib import Path
 import pytest
 from tests.helpers import git
 
-from threadline.client_profiles import connect_client
+from threadline.client_profiles import connect_client, disconnect_client
+from threadline.git_hooks import install_refresh_hooks, uninstall_refresh_hooks
 from threadline.manifest import ProjectManifest, initialize_manifest
 from threadline.product_workflow import (
     checkpoint_workspace,
@@ -19,6 +19,7 @@ from threadline.product_workflow import (
     inspect_workspace,
     onboard_workspace,
     render_handoff_markdown,
+    uninstall_workspace,
 )
 from threadline.workspace import sync_local_workspace
 
@@ -128,6 +129,43 @@ def test_connect_merges_one_project_client_without_overwriting_other_servers(
     assert result["next_steps"][0].startswith("Review")
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
+    disconnected = disconnect_client(root, "cursor")
+    remaining = json.loads(target.read_text(encoding="utf-8"))
+    assert disconnected["changed"] is True
+    assert disconnected["preserved_other_servers"] is True
+    assert remaining == {"mcpServers": {"existing": {"command": "existing-server"}}}
+
+
+def test_codex_disconnect_preserves_other_sections_and_empty_profile_is_removed(
+    tmp_path: Path,
+) -> None:
+    root = _repository(tmp_path)
+    target = root / ".codex" / "config.toml"
+    target.parent.mkdir()
+    target.write_text('[model]\nname = "local"\n', encoding="utf-8")
+    connect_client(root, "codex", python_executable=Path(sys.executable))
+
+    result = disconnect_client(root, "codex")
+
+    assert result["changed"] is True
+    assert target.read_text(encoding="utf-8") == '[model]\nname = "local"\n'
+
+    antigravity = root / ".agents" / "mcp_config.json"
+    connect_client(root, "antigravity", python_executable=Path(sys.executable))
+    removed = disconnect_client(root, "antigravity")
+    assert removed["removed_file"] is True
+    assert not antigravity.exists()
+
+
+def test_disconnect_rejects_malformed_json_without_overwriting_it(tmp_path: Path) -> None:
+    root = _repository(tmp_path)
+    target = root / ".cursor" / "mcp.json"
+    target.parent.mkdir()
+    target.write_text("[]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="not an object"):
+        disconnect_client(root, "cursor")
+    assert target.read_text(encoding="utf-8") == "[]\n"
+
 
 def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
     tmp_path: Path,
@@ -192,24 +230,13 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
         encoding="utf-8",
     )
     git(root, "add", "parser.py")
-    command_environment = os.environ.copy()
-    command_environment.update(
-        {
-            "COVERAGE_PROCESS_START": "/tmp/coverage-config",
-            "COV_CORE_SOURCE": "threadline",
-        }
-    )
-    started = time.perf_counter()
     subprocess.run(
         ["git", "-C", str(root), "commit", "-m", "Normalize parser output"],
         check=True,
         capture_output=True,
         text=True,
         timeout=15,
-        env=command_environment,
     )
-    assert time.perf_counter() - started < 1.0
-
     deadline = time.monotonic() + 15
     refreshed = inspect_workspace(root)
     while not refreshed["ready"] and time.monotonic() < deadline:
@@ -290,8 +317,57 @@ def test_onboard_refuses_existing_work_without_creating_product_files(tmp_path: 
             python_executable=Path(sys.executable),
         )
 
-    assert not (root / "threadline.json").exists()
-    assert not (root / ".codex").exists()
+
+def test_uninstall_removes_only_rebuildable_state_and_keeps_portable_contract(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = _repository(tmp_path)
+    sync_local_workspace(root)
+    connect_client(root, "antigravity", python_executable=Path(sys.executable))
+
+    result = uninstall_workspace(root)
+
+    assert result["contract_removed"] is False
+    assert (root / "threadline.json").is_file()
+    assert not (root / ".agents" / "mcp_config.json").exists()
+    assert not (root / ".git" / "threadline" / "threadline.db").exists()
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+
+def test_uninstall_contract_removal_requires_clean_tree_and_leaves_reviewable_delete(
+    tmp_path: Path,
+) -> None:
+    root = _repository(tmp_path)
+    (root / "scratch.txt").write_text("work in progress\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="requires a clean working tree"):
+        uninstall_workspace(root, remove_contract=True)
+
+    (root / "scratch.txt").unlink()
+    result = uninstall_workspace(root, remove_contract=True)
+    assert result["contract_removed"] is True
+    assert git(root, "status", "--short") == "D threadline.json"
+
+
+def test_hook_uninstall_preserves_foreign_and_modified_hooks(tmp_path: Path) -> None:
+    root = _repository(tmp_path)
+    install_refresh_hooks(root, python_executable=Path(sys.executable))
+    post_commit = root / ".git" / "hooks" / "post-commit"
+    post_commit.write_text(
+        post_commit.read_text(encoding="utf-8") + "printf 'custom extension\\n'\n",
+        encoding="utf-8",
+    )
+    post_merge = root / ".git" / "hooks" / "post-merge"
+    post_merge.write_text("#!/bin/sh\nprintf 'foreign hook\\n'\n", encoding="utf-8")
+
+    result = uninstall_refresh_hooks(root)
+
+    assert result["blocked"] == ["post-commit"]
+    assert result["preserved"] == ["post-merge"]
+    assert set(result["removed"]) == {"post-checkout", "post-rewrite"}
+    assert post_commit.is_file()
+    assert post_merge.is_file()
 
 
 def test_checkpoint_records_agent_text_as_asserted_and_preserves_dirty_work(

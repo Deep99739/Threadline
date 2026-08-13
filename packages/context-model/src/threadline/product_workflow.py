@@ -10,13 +10,16 @@ from pydantic import ValidationError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
-from threadline.client_profiles import connect_client
-from threadline.git_hooks import install_refresh_hooks
+from threadline.client_profiles import connect_client, disconnect_client
+from threadline.client_verification import verify_client_connection
+from threadline.git_hooks import install_refresh_hooks, uninstall_refresh_hooks
 from threadline.git_repository import (
     commit_exact_paths,
     read_git_working_state,
     read_worktree_dirty_paths,
     resolve_git_root,
+    threadline_git_cache_path,
+    threadline_git_state_path,
 )
 from threadline.manifest import (
     MANIFEST_PATH,
@@ -87,6 +90,11 @@ def onboard_workspace(
     report = inspect_workspace(root)
     if not report["ready"]:
         raise RuntimeError("onboarding did not produce a current trusted handoff")
+    client_connection = verify_client_connection(
+        root,
+        client,
+        python_executable=python_executable,
+    )
     return {
         "ready": True,
         "repository": str(root),
@@ -94,9 +102,54 @@ def onboard_workspace(
         "commit_created": created_manifest_commit,
         "context_commit": synced.handoff.context_pack.repository_version.commit_sha,
         "client": connection,
+        "client_connection": client_connection,
         "refresh_hooks": hooks,
         "requires_api_key": False,
-        "first_action": f"Open {client} in this repository and ask for Threadline status.",
+        "first_action": client_connection["next_action"],
+    }
+
+
+def uninstall_workspace(
+    repository_path: Path,
+    *,
+    remove_contract: bool = False,
+) -> dict[str, Any]:
+    """Remove local integrations and rebuildable state without touching product code."""
+
+    root, _manifest = read_worktree_manifest(repository_path)
+    dirty_paths = read_worktree_dirty_paths(root)
+    if remove_contract and dirty_paths:
+        raise ValueError(
+            "removing threadline.json requires a clean working tree; commit or revert: "
+            + ", ".join(dirty_paths)
+        )
+    clients = {
+        name: disconnect_client(root, name)
+        for name in ("codex", "claude", "cursor", "vscode", "antigravity")
+    }
+    hooks = uninstall_refresh_hooks(root)
+    removed_state: list[str] = []
+    for path in (threadline_git_state_path(root), threadline_git_cache_path(root)):
+        if path.is_file():
+            path.unlink()
+            removed_state.append(str(path))
+    contract_removed = False
+    if remove_contract:
+        manifest_path = root / MANIFEST_PATH
+        if manifest_path.is_file():
+            manifest_path.unlink()
+            contract_removed = True
+    return {
+        "repository": str(root),
+        "clients": clients,
+        "hooks": hooks,
+        "removed_rebuildable_state": removed_state,
+        "contract_removed": contract_removed,
+        "next_action": (
+            "Review and commit the threadline.json deletion."
+            if contract_removed
+            else "Threadline local integrations are removed; threadline.json remains portable."
+        ),
     }
 
 

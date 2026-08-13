@@ -12,7 +12,8 @@ from pathlib import Path
 import uvicorn
 
 from threadline.api import create_app
-from threadline.client_profiles import build_client_profiles, connect_client
+from threadline.client_profiles import build_client_profiles, connect_client, disconnect_client
+from threadline.client_verification import verify_client_connection
 from threadline.command_evidence import run_and_record_check
 from threadline.demo import default_demo_repository, prepare_demo_repository, run_demo
 from threadline.manifest import initialize_manifest
@@ -24,6 +25,7 @@ from threadline.product_workflow import (
     inspect_workspace,
     onboard_workspace,
     render_handoff_markdown,
+    uninstall_workspace,
 )
 from threadline.workspace import sync_local_workspace
 
@@ -79,6 +81,31 @@ def _parser() -> argparse.ArgumentParser:
     )
     connect.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
     connect.add_argument("--python-executable", type=Path)
+
+    verify_client = subparsers.add_parser(
+        "verify-client", help="prove the configured client and Threadline server can connect"
+    )
+    verify_client.add_argument(
+        "client",
+        choices=("codex", "claude", "cursor", "vscode", "antigravity"),
+    )
+    verify_client.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    verify_client.add_argument("--python-executable", type=Path)
+
+    disconnect = subparsers.add_parser(
+        "disconnect", help="remove Threadline from one project-scoped client profile"
+    )
+    disconnect.add_argument(
+        "client",
+        choices=("codex", "claude", "cursor", "vscode", "antigravity"),
+    )
+    disconnect.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+
+    uninstall = subparsers.add_parser(
+        "uninstall", help="remove local integrations and rebuildable Threadline state"
+    )
+    uninstall.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    uninstall.add_argument("--remove-contract", action="store_true")
 
     doctor = subparsers.add_parser(
         "doctor", help="diagnose whether a repository has a current trusted handoff"
@@ -236,6 +263,35 @@ def main(arguments: Sequence[str] | None = None) -> None:
             )
         )
         return
+    if parsed.command == "verify-client":
+        verification_result = verify_client_connection(
+            parsed.repository,
+            parsed.client,
+            python_executable=parsed.python_executable,
+        )
+        print(json.dumps(verification_result, indent=2))
+        if not verification_result["verified"]:
+            raise SystemExit(1)
+        return
+    if parsed.command == "disconnect":
+        print(
+            json.dumps(
+                disconnect_client(parsed.repository, parsed.client),
+                indent=2,
+            )
+        )
+        return
+    if parsed.command == "uninstall":
+        print(
+            json.dumps(
+                uninstall_workspace(
+                    parsed.repository,
+                    remove_contract=parsed.remove_contract,
+                ),
+                indent=2,
+            )
+        )
+        return
     if parsed.command == "doctor":
         report = inspect_workspace(parsed.repository)
         print(json.dumps(report, indent=2))
@@ -298,16 +354,29 @@ def main(arguments: Sequence[str] | None = None) -> None:
             port=parsed.port,
         )
         return
-    result = run_demo(_database_url(parsed.database_url), parsed.repository)
+    demo_result = run_demo(_database_url(parsed.database_url), parsed.repository)
     print(
         json.dumps(
             {
-                "repository": str(result.repository_path),
-                "handoff_id": str(result.handoff.handoff.id),
-                "context_version_id": str(result.handoff.context_version.id),
-                **result.handoff.content,
+                "repository": str(demo_result.repository_path),
+                "handoff_id": str(demo_result.handoff.handoff.id),
+                "context_version_id": str(demo_result.handoff.context_version.id),
+                **demo_result.handoff.content,
             },
             indent=2,
             default=str,
         )
     )
+
+
+def run() -> None:
+    """Human-facing entry point that converts expected failures into recovery guidance."""
+
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Threadline stopped before completing the operation.", file=sys.stderr)
+        raise SystemExit(130) from None
+    except (FileNotFoundError, FileExistsError, LookupError, PermissionError, ValueError) as error:
+        print(f"Threadline: {error}", file=sys.stderr)
+        raise SystemExit(2) from None

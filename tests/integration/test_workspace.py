@@ -281,7 +281,9 @@ def test_cli_onboard_returns_first_value_in_one_command(
 
     assert result["ready"] is True
     assert result["context_commit"] == git(root, "rev-parse", "HEAD")
-    assert result["first_action"].startswith("Open codex")
+    assert result["client_connection"]["server"]["verified"] is True
+    assert result["client_connection"]["trust"]["trusted"] is False
+    assert "choose Trust" in result["first_action"]
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
 

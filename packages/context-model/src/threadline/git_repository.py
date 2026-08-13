@@ -132,6 +132,26 @@ def exclude_local_worktree_path(path: Path, relative_path: str) -> bool:
     return True
 
 
+def remove_local_worktree_exclusion(path: Path, relative_path: str) -> bool:
+    """Remove one exact Threadline-created local exclusion without touching other entries."""
+
+    requested = PurePosixPath(relative_path)
+    if requested.is_absolute() or ".." in requested.parts or relative_path in {"", "."}:
+        raise ValueError("local exclusion must be a repository-relative path")
+    root = resolve_git_root(path)
+    raw_exclude = Path(_git(root, "rev-parse", "--git-path", "info/exclude"))
+    exclude_path = raw_exclude if raw_exclude.is_absolute() else root / raw_exclude
+    if not exclude_path.is_file():
+        return False
+    normalized = requested.as_posix()
+    lines = exclude_path.read_text(encoding="utf-8").splitlines()
+    retained = [line for line in lines if line.strip() != normalized]
+    if retained == lines:
+        return False
+    exclude_path.write_text("\n".join(retained) + ("\n" if retained else ""), encoding="utf-8")
+    return True
+
+
 def commit_exact_paths(path: Path, relative_paths: tuple[str, ...], message: str) -> str:
     """Commit only the named generated files, refusing any pre-existing repository drift."""
 

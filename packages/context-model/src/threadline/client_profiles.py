@@ -7,7 +7,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from threadline.git_repository import exclude_local_worktree_path, threadline_git_state_path
+from threadline.git_repository import (
+    exclude_local_worktree_path,
+    remove_local_worktree_exclusion,
+    threadline_git_state_path,
+)
 from threadline.workspace import LocalWorkspace, load_local_workspace
 
 OFFICIAL_DOCUMENTATION = {
@@ -220,4 +224,74 @@ def connect_client(
             "Run threadline doctor . to confirm the exact handoff is current.",
             "Open the client and approve the local MCP server when prompted.",
         ],
+    }
+
+
+def _remove_codex_server(content: str) -> str:
+    lines = content.splitlines()
+    retained: list[str] = []
+    removing = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "[mcp_servers.threadline]":
+            removing = True
+            continue
+        if removing and stripped.startswith("[") and stripped.endswith("]"):
+            removing = False
+        if not removing:
+            retained.append(line)
+    while retained and not retained[-1].strip():
+        retained.pop()
+    return "\n".join(retained) + ("\n" if retained else "")
+
+
+def disconnect_client(repository_path: Path, client_name: str) -> dict[str, Any]:
+    """Remove only Threadline's project entry while preserving every other server."""
+
+    profiles = build_client_profiles(repository_path)
+    clients = profiles["clients"]
+    if client_name not in clients:
+        supported = ", ".join(sorted(clients))
+        raise ValueError(f"unsupported client {client_name!r}; choose one of: {supported}")
+    root = Path(str(profiles["repository"]))
+    target = root / str(clients[client_name]["path"])
+    changed = False
+    removed_file = False
+    if target.is_file():
+        if client_name == "codex":
+            current = target.read_text(encoding="utf-8")
+            rendered = _remove_codex_server(current)
+        else:
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            if not isinstance(payload, dict):
+                raise ValueError(f"existing client configuration is not an object: {target}")
+            container_key = "servers" if client_name == "vscode" else "mcpServers"
+            servers = payload.get(container_key)
+            if isinstance(servers, dict) and "threadline" in servers:
+                servers = dict(servers)
+                servers.pop("threadline")
+                payload[container_key] = servers
+            rendered = json.dumps(payload, indent=2) + "\n"
+        changed = rendered != target.read_text(encoding="utf-8")
+        empty_profiles = {
+            "",
+            "{}",
+            '{\n  "mcpServers": {}\n}',
+            '{\n  "servers": {}\n}',
+        }
+        if changed and rendered.strip() in empty_profiles:
+            target.unlink()
+            removed_file = True
+        elif changed:
+            target.write_text(rendered, encoding="utf-8")
+    exclusion_removed = remove_local_worktree_exclusion(
+        root, target.relative_to(root).as_posix()
+    )
+    return {
+        "client": client_name,
+        "path": str(target),
+        "changed": changed,
+        "removed_file": removed_file,
+        "exclusion_removed": exclusion_removed,
+        "preserved_other_servers": True,
     }

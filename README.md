@@ -75,16 +75,17 @@ Requirements:
 - Git
 - Python 3.12 to 3.14
 
-Install directly from GitHub into an isolated user command:
+On macOS with Homebrew, install `pipx` without writing into Apple's or Homebrew's managed Python:
 
 ```bash
-python3 -m pip install --user pipx
-python3 -m pipx ensurepath
+brew install pipx
+pipx ensurepath
 pipx install git+https://github.com/Deep99739/Threadline.git
 ```
 
-Open a new terminal after `ensurepath` the first time. Docker is not required for local use; it is
-only needed for PostgreSQL-backed development and release checks.
+On Linux, install `pipx` with the operating system package manager, then run the same final two
+commands. Open a new terminal after `ensurepath` the first time. Docker is not required for local
+use; it is only needed for PostgreSQL-backed development and release checks.
 
 ## Add Threadline to a repository
 
@@ -105,7 +106,7 @@ Onboarding requires a clean Git working tree. In one command, Threadline:
 - compiles the first handoff at that exact commit;
 - connects the selected project's read-only MCP server;
 - keeps the machine-specific client profile local; and
-- verifies that the repository is ready before returning.
+- performs a real MCP handshake and reports client registration separately.
 
 It uses your configured Git identity for the context commit and does not require an API key. Local
 derived state stays at `.git/threadline/threadline.db`. Repository-local Git hooks refresh the
@@ -116,8 +117,13 @@ Confirm or read the resulting handoff at any time:
 
 ```bash
 threadline doctor .
+threadline verify-client codex .
 threadline handoff .
 ```
+
+Codex deliberately ignores project `.codex/config.toml` settings until you trust the repository.
+Review the repository, choose **Trust** in Codex, reopen it, and run `threadline verify-client codex
+.`. Threadline reports this requirement; it never grants trust to itself.
 
 The lower-level `init`, `sync`, `clients`, and `connect` commands remain available for custom
 workflows.
@@ -144,6 +150,19 @@ threadline clients .
 
 Threadline changes only the selected project's configuration. It does not modify global client
 settings or commit machine-specific runtime paths.
+
+Disconnect one client without affecting its other MCP servers:
+
+```bash
+threadline disconnect codex .
+```
+
+Remove every local integration and rebuildable database while retaining the portable
+`threadline.json` contract:
+
+```bash
+threadline uninstall .
+```
 
 ## Everyday workflow
 

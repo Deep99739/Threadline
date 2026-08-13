@@ -11,7 +11,6 @@ from pathlib import Path, PurePosixPath
 from time import perf_counter
 from typing import Any
 
-from threadline.git_repository import read_git_working_state
 from threadline.manifest import ProjectManifest, read_worktree_manifest
 
 REPORT_PATH = "threadline/test-report.json"
@@ -103,13 +102,6 @@ def run_and_record_check(
         raise ValueError("timeout must be between 1 and 3600 seconds")
 
     root, manifest = read_worktree_manifest(repository_path)
-    live = read_git_working_state(root, manifest.repository_id)
-    if "threadline.json" in live.dirty_paths:
-        raise ValueError(
-            "threadline.json already has uncommitted changes; review, commit, or revert "
-            "them before recording command evidence"
-        )
-
     paths = tuple(dict.fromkeys(_relative_path(item) for item in include_paths))
     tested_hashes: dict[str, str] = {}
     for path in paths:

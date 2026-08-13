@@ -22,6 +22,9 @@ from threadline.retrieval import RetrievedEntity, evidence_index, lexical_retrie
 from threadline.storage import ThreadlineStore
 
 CONTEXT_VERSION_NAMESPACE = UUID("799b4df3-3534-4857-a1af-e6bbec721b0c")
+CONTEXT_REQUEST_NAMESPACE = UUID("db9ca232-a4b7-45f2-967b-f91870a9b45a")
+CONTEXT_TRACE_NAMESPACE = UUID("fe91d7b4-5e17-4013-a8d8-9111be43086b")
+HANDOFF_NAMESPACE = UUID("234a377e-a809-43d9-94ad-22b2545b8825")
 CONTEXT_CONFIG_VERSION = "lexical-precedence.v2"
 
 
@@ -56,10 +59,7 @@ def _versioned_item(item: ContextItem) -> dict[str, object]:
         "selection_reason": item.selection_reason,
         "authority_reason": item.authority_reason,
         "citations": sorted(
-            (
-                citation.locator.model_dump(mode="json")
-                for citation in item.citations
-            ),
+            (citation.locator.model_dump(mode="json") for citation in item.citations),
             key=lambda locator: (str(locator["uri"]), str(locator["content_hash"])),
         ),
     }
@@ -167,6 +167,14 @@ def compile_handoff(
         item.statement for item in items if item.epistemic_state is EpistemicState.CONTRADICTED
     )
     context_pack = ContextPack(
+        request_id=uuid5(
+            CONTEXT_REQUEST_NAMESPACE,
+            f"{tenant_id}:{workspace_id}:{task_id}:{context_version.id}:continue_task",
+        ),
+        trace_id=uuid5(
+            CONTEXT_TRACE_NAMESPACE,
+            f"{tenant_id}:{workspace_id}:{task_id}:{context_version.id}:continue_task",
+        ),
         tenant_id=tenant_id,
         workspace_id=workspace_id,
         task_id=task_id,
@@ -200,6 +208,10 @@ def compile_handoff(
         "context_pack": context_pack.model_dump(mode="json"),
     }
     handoff = Handoff(
+        id=uuid5(
+            HANDOFF_NAMESPACE,
+            f"{tenant_id}:{workspace_id}:{task_id}:{context_version.id}:continue_task",
+        ),
         tenant_id=tenant_id,
         workspace_id=workspace_id,
         created_by=actor_id,

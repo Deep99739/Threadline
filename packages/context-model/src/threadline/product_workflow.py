@@ -15,7 +15,6 @@ from threadline.manifest import ProjectManifest, read_worktree_manifest
 from threadline.storage import ThreadlineStore
 from threadline.workspace import (
     load_local_workspace,
-    sync_local_workspace,
     workspace_database_url,
 )
 
@@ -189,10 +188,38 @@ def checkpoint_workspace(
 
 
 def handoff_content(repository_path: Path, *, database_url: str | None = None) -> dict[str, Any]:
-    """Synchronize and return the exact current handoff for terminal consumers."""
+    """Return an already-compiled exact-commit handoff without mutating stored context."""
 
-    synced = sync_local_workspace(repository_path, database_url=database_url)
-    return synced.handoff.content
+    workspace = load_local_workspace(repository_path)
+    live = read_git_working_state(workspace.repository_path, workspace.scope.repository_id)
+    if live.dirty_paths:
+        raise ValueError(
+            "working tree is dirty; commit or revert changes before reading verified context"
+        )
+    resolved_database_url = workspace_database_url(workspace, database_url)
+    database_name = make_url(resolved_database_url).database
+    if (
+        resolved_database_url.startswith("sqlite")
+        and database_name not in {None, ":memory:"}
+        and not Path(str(database_name)).is_file()
+    ):
+        raise LookupError("no compiled handoff exists; run threadline sync first")
+    store = ThreadlineStore(resolved_database_url)
+    try:
+        content = store.load_latest_handoff(
+            tenant_id=workspace.scope.tenant_id,
+            workspace_id=workspace.scope.workspace_id,
+            task_id=workspace.manifest.task.id,
+        )
+    finally:
+        store.close()
+    version = content.get("repository_version", {})
+    if not isinstance(version, dict) or (
+        version.get("branch") != live.repository_version.branch
+        or version.get("commit_sha") != live.repository_version.commit_sha
+    ):
+        raise ValueError("compiled handoff is stale; run threadline sync first")
+    return content
 
 
 def render_handoff_markdown(content: dict[str, Any]) -> str:
@@ -228,9 +255,7 @@ def render_handoff_markdown(content: dict[str, Any]) -> str:
     for item in items:
         if not isinstance(item, dict):
             continue
-        lines.append(
-            f"- [{item.get('epistemic_state', 'UNKNOWN')}] {item.get('statement', '')}"
-        )
+        lines.append(f"- [{item.get('epistemic_state', 'UNKNOWN')}] {item.get('statement', '')}")
         citations = item.get("citations", [])
         if isinstance(citations, list):
             for citation in citations:

@@ -52,9 +52,76 @@ class IngestionResult:
     git_snapshot: GitSnapshot
 
 
-def _required_evidence(
-    evidence_by_path: dict[str, Evidence], path: str
-) -> Evidence:
+INGEST_ENTITY_NAMESPACE = UUID("1d508ff0-b19b-4ab2-a923-3eaf121f296c")
+
+
+def _entity_id(
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    repository_id: UUID,
+    branch: str,
+    commit_sha: str,
+    task_id: UUID,
+    entity_type: str,
+    logical_key: str,
+) -> UUID:
+    """Return one stable identity for an entity in an exact repository snapshot."""
+
+    return uuid5(
+        INGEST_ENTITY_NAMESPACE,
+        ":".join(
+            (
+                str(tenant_id),
+                str(workspace_id),
+                str(repository_id),
+                branch,
+                commit_sha,
+                str(task_id),
+                entity_type,
+                logical_key,
+            )
+        ),
+    )
+
+
+def _edge_id(
+    *,
+    tenant_id: UUID,
+    workspace_id: UUID,
+    repository_id: UUID,
+    branch: str,
+    commit_sha: str,
+    task_id: UUID,
+    from_type: str,
+    from_id: UUID,
+    edge_type: EdgeType,
+    to_type: str,
+    to_id: UUID,
+    source_evidence_id: UUID | None,
+) -> UUID:
+    return _entity_id(
+        tenant_id=tenant_id,
+        workspace_id=workspace_id,
+        repository_id=repository_id,
+        branch=branch,
+        commit_sha=commit_sha,
+        task_id=task_id,
+        entity_type="edge",
+        logical_key=":".join(
+            (
+                from_type,
+                str(from_id),
+                edge_type.value,
+                to_type,
+                str(to_id),
+                str(source_evidence_id or "none"),
+            )
+        ),
+    )
+
+
+def _required_evidence(evidence_by_path: dict[str, Evidence], path: str) -> Evidence:
     if path not in evidence_by_path:
         raise ValueError(f"manifest evidence is missing from the committed snapshot: {path}")
     return evidence_by_path[path]
@@ -100,19 +167,30 @@ def ingest_local_repository(
     )
     file_by_path = {item.path: item for item in scoped_files}
     safe_content_by_path = {item.path: safe_git_file(item) for item in scoped_files}
-    evidence_by_path = {
-        item.path: evidence_from_git_file(
+    evidence_by_path: dict[str, Evidence] = {}
+    for item in scoped_files:
+        evidence = evidence_from_git_file(
             item,
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             actor_id=actor_id,
             repository_version=git_snapshot.repository_version,
-            sensitivity=(
-                "REDACTED" if safe_content_by_path[item.path].redacted else "INTERNAL"
-            ),
+            sensitivity=("REDACTED" if safe_content_by_path[item.path].redacted else "INTERNAL"),
         )
-        for item in scoped_files
-    }
+        evidence_by_path[item.path] = evidence.model_copy(
+            update={
+                "id": _entity_id(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    repository_id=repository_id,
+                    branch=git_snapshot.repository_version.branch,
+                    commit_sha=git_snapshot.repository_version.commit_sha,
+                    task_id=manifest.task.id,
+                    entity_type="evidence",
+                    logical_key=f"{item.path}:{item.content_hash}",
+                )
+            }
+        )
     manifest_evidence = evidence_by_path["threadline.json"]
     tested_paths: list[str] = []
     for specification in manifest.verifiers:
@@ -151,6 +229,16 @@ def ingest_local_repository(
 
     decisions = tuple(
         Decision(
+            id=_entity_id(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                repository_id=repository_id,
+                branch=git_snapshot.repository_version.branch,
+                commit_sha=git_snapshot.repository_version.commit_sha,
+                task_id=task.id,
+                entity_type="decision",
+                logical_key=item.key,
+            ),
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             created_by=actor_id,
@@ -168,6 +256,16 @@ def ingest_local_repository(
     )
     constraints = tuple(
         Constraint(
+            id=_entity_id(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                repository_id=repository_id,
+                branch=git_snapshot.repository_version.branch,
+                commit_sha=git_snapshot.repository_version.commit_sha,
+                task_id=task.id,
+                entity_type="constraint",
+                logical_key=item.key,
+            ),
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             created_by=actor_id,
@@ -184,6 +282,16 @@ def ingest_local_repository(
 
     observations = tuple(
         Observation(
+            id=_entity_id(
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                repository_id=repository_id,
+                branch=git_snapshot.repository_version.branch,
+                commit_sha=git_snapshot.repository_version.commit_sha,
+                task_id=task.id,
+                entity_type="observation",
+                logical_key=f"{index}:{item.actor_type}:{item.source_path}:{item.statement}",
+            ),
             tenant_id=tenant_id,
             workspace_id=workspace_id,
             created_by=actor_id,
@@ -196,7 +304,7 @@ def ingest_local_repository(
             observed_at=utc_now(),
             source_evidence_id=_required_evidence(evidence_by_path, item.source_path).id,
         )
-        for item in manifest.observations
+        for index, item in enumerate(manifest.observations)
     )
 
     verification_context = VerificationContext(
@@ -209,14 +317,51 @@ def ingest_local_repository(
         content_hashes=committed_hashes,
         evidence_by_path=evidence_by_path,
     )
-    verified_claims = tuple(
-        verifier.verify(verification_context)
-        for verifier in (_verifier(item) for item in manifest.verifiers)
-    )
-    claims = tuple(item.claim for item in verified_claims)
-    verifications = tuple(
-        item.verification for item in verified_claims if item.verification is not None
-    )
+    verified_claims_list = []
+    for index, specification in enumerate(manifest.verifiers):
+        verified = _verifier(specification).verify(verification_context)
+        verifier_key = json.dumps(
+            specification.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        claim_id = _entity_id(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            repository_id=repository_id,
+            branch=git_snapshot.repository_version.branch,
+            commit_sha=git_snapshot.repository_version.commit_sha,
+            task_id=task.id,
+            entity_type="claim",
+            logical_key=(
+                f"{index}:{verifier_key}:{verified.claim.subject_key}:{verified.claim.predicate}"
+            ),
+        )
+        claim = verified.claim.model_copy(update={"id": claim_id})
+        verification = verified.verification
+        if verification is not None:
+            verification = verification.model_copy(
+                update={
+                    "id": _entity_id(
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
+                        repository_id=repository_id,
+                        branch=git_snapshot.repository_version.branch,
+                        commit_sha=git_snapshot.repository_version.commit_sha,
+                        task_id=task.id,
+                        entity_type="verification",
+                        logical_key=(
+                            f"{index}:{verification.verifier_key}:"
+                            f"{verification.verifier_version}:{verification.input_hash}"
+                        ),
+                    ),
+                    "claim_id": claim_id,
+                }
+            )
+        verified_claims_list.append((claim, verification))
+    verified_claims = tuple(verified_claims_list)
+    claims = tuple(item[0] for item in verified_claims)
+    verifications = tuple(item[1] for item in verified_claims if item[1] is not None)
     code_graph = extract_code_graph(
         scoped_files,
         evidence_by_path,
@@ -229,45 +374,88 @@ def ingest_local_repository(
 
     edges: list[ContextEdge] = []
     for claim in claims:
+        edge_type = EdgeType.DEPENDS_ON
         edges.append(
             ContextEdge(
+                id=_edge_id(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    repository_id=repository_id,
+                    branch=git_snapshot.repository_version.branch,
+                    commit_sha=git_snapshot.repository_version.commit_sha,
+                    task_id=task.id,
+                    from_type="task",
+                    from_id=task.id,
+                    edge_type=edge_type,
+                    to_type="claim",
+                    to_id=claim.id,
+                    source_evidence_id=None,
+                ),
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 created_by=actor_id,
                 from_type="task",
                 from_id=task.id,
-                edge_type=EdgeType.DEPENDS_ON,
+                edge_type=edge_type,
                 to_type="claim",
                 to_id=claim.id,
             )
         )
         for link in claim.evidence:
+            edge_type = (
+                EdgeType.SUPPORTS if link.relation.value == "SUPPORTS" else EdgeType.CONTRADICTS
+            )
             edges.append(
                 ContextEdge(
+                    id=_edge_id(
+                        tenant_id=tenant_id,
+                        workspace_id=workspace_id,
+                        repository_id=repository_id,
+                        branch=git_snapshot.repository_version.branch,
+                        commit_sha=git_snapshot.repository_version.commit_sha,
+                        task_id=task.id,
+                        from_type="claim",
+                        from_id=claim.id,
+                        edge_type=edge_type,
+                        to_type="evidence",
+                        to_id=link.evidence_id,
+                        source_evidence_id=link.evidence_id,
+                    ),
                     tenant_id=tenant_id,
                     workspace_id=workspace_id,
                     created_by=actor_id,
                     from_type="claim",
                     from_id=claim.id,
-                    edge_type=(
-                        EdgeType.SUPPORTS
-                        if link.relation.value == "SUPPORTS"
-                        else EdgeType.CONTRADICTS
-                    ),
+                    edge_type=edge_type,
                     to_type="evidence",
                     to_id=link.evidence_id,
                     source_evidence_id=link.evidence_id,
                 )
             )
     for verification in verifications:
+        edge_type = EdgeType.VERIFIED_BY
         edges.append(
             ContextEdge(
+                id=_edge_id(
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    repository_id=repository_id,
+                    branch=git_snapshot.repository_version.branch,
+                    commit_sha=git_snapshot.repository_version.commit_sha,
+                    task_id=task.id,
+                    from_type="claim",
+                    from_id=verification.claim_id,
+                    edge_type=edge_type,
+                    to_type="verification",
+                    to_id=verification.id,
+                    source_evidence_id=verification.evidence_ids[0],
+                ),
                 tenant_id=tenant_id,
                 workspace_id=workspace_id,
                 created_by=actor_id,
                 from_type="claim",
                 from_id=verification.claim_id,
-                edge_type=EdgeType.VERIFIED_BY,
+                edge_type=edge_type,
                 to_type="verification",
                 to_id=verification.id,
                 source_evidence_id=verification.evidence_ids[0],
@@ -322,8 +510,7 @@ def ingest_local_repository(
     store.save_snapshot(
         snapshot,
         evidence_content={
-            evidence_by_path[path].id: safe_content_by_path[path].content
-            for path in file_by_path
+            evidence_by_path[path].id: safe_content_by_path[path].content for path in file_by_path
         },
     )
     return IngestionResult(snapshot=snapshot, git_snapshot=git_snapshot)

@@ -177,18 +177,38 @@ class ThreadlineStore:
         branch: str,
         head_commit: str,
     ) -> None:
-        row = RepositoryRow(
-            id=str(repository_id),
-            tenant_id=str(tenant_id),
-            workspace_id=str(workspace_id),
-            name=name,
-            path=path,
-            branch=branch,
-            head_commit=head_commit,
-            observed_at=utc_now(),
-        )
         with self._sessions.begin() as session:
-            session.merge(row)
+            existing = session.get(RepositoryRow, str(repository_id))
+            if existing is not None:
+                if existing.tenant_id != str(tenant_id) or existing.workspace_id != str(
+                    workspace_id
+                ):
+                    raise PermissionError("repository identifier belongs to another scope")
+                if (
+                    existing.name == name
+                    and existing.path == path
+                    and existing.branch == branch
+                    and existing.head_commit == head_commit
+                ):
+                    return
+                existing.name = name
+                existing.path = path
+                existing.branch = branch
+                existing.head_commit = head_commit
+                existing.observed_at = utc_now()
+                return
+            session.add(
+                RepositoryRow(
+                    id=str(repository_id),
+                    tenant_id=str(tenant_id),
+                    workspace_id=str(workspace_id),
+                    name=name,
+                    path=path,
+                    branch=branch,
+                    head_commit=head_commit,
+                    observed_at=utc_now(),
+                )
+            )
 
     def save_snapshot(
         self,
@@ -211,6 +231,33 @@ class ThreadlineStore:
             *(("edge", item) for item in snapshot.edges),
         )
         with self._sessions.begin() as session:
+            incoming_ids = {
+                str(entity.model_dump(mode="python")["id"]) for _entity_type, entity in entities
+            }
+            existing_rows = session.scalars(
+                select(ContextEntityRow).where(
+                    ContextEntityRow.tenant_id == str(snapshot.tenant_id),
+                    ContextEntityRow.workspace_id == str(snapshot.workspace_id),
+                    ContextEntityRow.repository_id
+                    == str(snapshot.repository_version.repository_id),
+                    ContextEntityRow.task_id == str(snapshot.task.id),
+                    ContextEntityRow.branch == snapshot.repository_version.branch,
+                    ContextEntityRow.commit_sha == snapshot.repository_version.commit_sha,
+                    ContextEntityRow.entity_type != "context_version",
+                )
+            ).all()
+            obsolete_rows = [item for item in existing_rows if item.id not in incoming_ids]
+            obsolete_evidence = [
+                item.id for item in obsolete_rows if item.entity_type == "evidence"
+            ]
+            if obsolete_evidence:
+                session.execute(
+                    delete(EvidenceContentRow).where(
+                        EvidenceContentRow.evidence_id.in_(obsolete_evidence)
+                    )
+                )
+            for row in obsolete_rows:
+                session.delete(row)
             for entity_type, entity in entities:
                 self._merge_entity(
                     session,
@@ -224,7 +271,15 @@ class ThreadlineStore:
             for evidence_id, content in evidence_content.items():
                 if evidence_id not in {item.id for item in snapshot.evidence}:
                     raise ValueError("evidence content references evidence outside the snapshot")
-                session.merge(
+                existing_content = session.get(EvidenceContentRow, str(evidence_id))
+                if existing_content is not None:
+                    if (
+                        existing_content.tenant_id != str(snapshot.tenant_id)
+                        or existing_content.content != content
+                    ):
+                        raise ValueError("evidence content identifier collision")
+                    continue
+                session.add(
                     EvidenceContentRow(
                         evidence_id=str(evidence_id),
                         tenant_id=str(snapshot.tenant_id),
@@ -290,7 +345,26 @@ class ThreadlineStore:
 
     def save_handoff(self, handoff: Handoff, compiled_content: dict[str, Any]) -> None:
         with self._sessions.begin() as session:
-            session.merge(
+            existing = session.get(HandoffRow, str(handoff.id))
+            if existing is not None:
+                if (
+                    existing.tenant_id != str(handoff.tenant_id)
+                    or existing.workspace_id != str(handoff.workspace_id)
+                    or existing.task_id != str(handoff.task_id)
+                    or existing.context_version_id != str(handoff.context_version_id)
+                    or existing.compiled_content != compiled_content
+                ):
+                    raise ValueError("handoff identifier collision")
+                return
+            session.execute(
+                delete(HandoffRow).where(
+                    HandoffRow.tenant_id == str(handoff.tenant_id),
+                    HandoffRow.workspace_id == str(handoff.workspace_id),
+                    HandoffRow.task_id == str(handoff.task_id),
+                    HandoffRow.context_version_id == str(handoff.context_version_id),
+                )
+            )
+            session.add(
                 HandoffRow(
                     id=str(handoff.id),
                     tenant_id=str(handoff.tenant_id),
@@ -347,9 +421,7 @@ class ThreadlineStore:
             constraints=tuple(_typed(grouped.get("constraint", []), Constraint)),
             observations=tuple(_typed(grouped.get("observation", []), Observation)),
             code_symbols=tuple(_typed(grouped.get("code_symbol", []), CodeSymbol)),
-            code_dependencies=tuple(
-                _typed(grouped.get("code_dependency", []), CodeDependency)
-            ),
+            code_dependencies=tuple(_typed(grouped.get("code_dependency", []), CodeDependency)),
             code_parse_diagnostics=tuple(
                 _typed(grouped.get("code_parse_diagnostic", []), CodeParseDiagnostic)
             ),
@@ -435,21 +507,71 @@ class ThreadlineStore:
     ) -> None:
         payload = entity.model_dump(mode="json")
         state = payload.get("epistemic_state")
-        session.merge(
-            ContextEntityRow(
-                id=str(payload["id"]),
-                tenant_id=str(payload["tenant_id"]),
-                workspace_id=str(payload["workspace_id"]),
-                repository_id=str(repository_id),
-                task_id=str(task_id),
-                branch=branch,
-                commit_sha=commit_sha,
-                entity_type=entity_type,
-                epistemic_state=str(state) if state is not None else None,
-                payload=payload,
-                created_at=datetime.fromisoformat(str(payload["created_at"])),
-            )
+        row = ContextEntityRow(
+            id=str(payload["id"]),
+            tenant_id=str(payload["tenant_id"]),
+            workspace_id=str(payload["workspace_id"]),
+            repository_id=str(repository_id),
+            task_id=str(task_id),
+            branch=branch,
+            commit_sha=commit_sha,
+            entity_type=entity_type,
+            epistemic_state=str(state) if state is not None else None,
+            payload=payload,
+            created_at=datetime.fromisoformat(str(payload["created_at"])),
         )
+        existing = session.get(ContextEntityRow, row.id)
+        if existing is not None:
+            if entity_type == "task":
+                if (
+                    existing.tenant_id != row.tenant_id
+                    or existing.workspace_id != row.workspace_id
+                    or existing.repository_id != row.repository_id
+                    or existing.task_id != row.task_id
+                    or existing.entity_type != "task"
+                ):
+                    raise PermissionError("task identifier belongs to another scope")
+                existing.branch = row.branch
+                existing.commit_sha = row.commit_sha
+                existing.epistemic_state = row.epistemic_state
+                existing.payload = row.payload
+                existing.created_at = row.created_at
+                return
+            expected_scope = (
+                row.tenant_id,
+                row.workspace_id,
+                row.repository_id,
+                row.task_id,
+                row.branch,
+                row.commit_sha,
+                row.entity_type,
+            )
+            actual_scope = (
+                existing.tenant_id,
+                existing.workspace_id,
+                existing.repository_id,
+                existing.task_id,
+                existing.branch,
+                existing.commit_sha,
+                existing.entity_type,
+            )
+            if actual_scope != expected_scope:
+                raise PermissionError("context entity identifier belongs to another scope")
+            volatile = {
+                "created_at",
+                "captured_at",
+                "executed_at",
+                "observed_at",
+                "published_at",
+            }
+            durable_existing = {
+                key: value for key, value in existing.payload.items() if key not in volatile
+            }
+            durable_incoming = {key: value for key, value in payload.items() if key not in volatile}
+            if durable_existing != durable_incoming:
+                raise ValueError("context entity identifier collision")
+            return
+        session.add(row)
 
 
 def _typed[Entity: BaseModel](items: Iterable[BaseModel], expected: type[Entity]) -> list[Entity]:

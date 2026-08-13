@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from threadline.client_profiles import connect_client
 from threadline.manifest import ProjectManifest, initialize_manifest
 from threadline.product_workflow import (
     checkpoint_workspace,
+    handoff_content,
     inspect_workspace,
     render_handoff_markdown,
 )
@@ -88,8 +90,7 @@ def test_doctor_explains_missing_sync_then_confirms_current_handoff(
 
     assert after["ready"] is True
     assert (
-        after["repository"]["commit"]
-        == synced.handoff.context_pack.repository_version.commit_sha
+        after["repository"]["commit"] == synced.handoff.context_pack.repository_version.commit_sha
     )
     assert after["handoff"]["current"] is True
     assert after["next_command"] == f"threadline handoff {root}"
@@ -180,3 +181,47 @@ def test_terminal_handoff_is_commit_bound_and_contains_inspectable_citations(
     assert "Add the whitespace integration test" in rendered
     assert "repo://" in rendered
     assert "ASSERTED" in rendered
+
+    database_path = root / ".git" / "threadline" / "threadline.db"
+    connection = sqlite3.connect(database_path)
+    try:
+        before = (
+            connection.execute("SELECT COUNT(*) FROM context_entities").fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM handoffs").fetchone()[0],
+        )
+    finally:
+        connection.close()
+
+    for _ in range(5):
+        assert handoff_content(root) == synced.handoff.content
+
+    connection = sqlite3.connect(database_path)
+    try:
+        after = (
+            connection.execute("SELECT COUNT(*) FROM context_entities").fetchone()[0],
+            connection.execute("SELECT COUNT(*) FROM handoffs").fetchone()[0],
+        )
+    finally:
+        connection.close()
+    assert after == before
+
+
+def test_terminal_handoff_requires_explicit_sync_and_rejects_stale_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = _repository(tmp_path)
+
+    with pytest.raises(LookupError, match="run threadline sync first"):
+        handoff_content(root)
+
+    sync_local_workspace(root)
+    (root / "parser.py").write_text(
+        "def parse(value: str) -> str:\n    return value.strip().lower()\n",
+        encoding="utf-8",
+    )
+    _commit(root, "parser.py", message="Change parser behavior")
+
+    with pytest.raises(ValueError, match="compiled handoff is stale"):
+        handoff_content(root)

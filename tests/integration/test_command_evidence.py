@@ -11,6 +11,7 @@ from tests.helpers import git
 from threadline.cli import main
 from threadline.command_evidence import run_and_record_check
 from threadline.manifest import ProjectManifest, initialize_manifest
+from threadline.product_workflow import checkpoint_workspace
 from threadline.workspace import sync_local_workspace
 
 
@@ -100,7 +101,8 @@ def test_real_full_check_becomes_verified_only_after_commit_and_sync(
     _commit_record(root)
     synchronized = sync_local_workspace(root)
     test_claim = next(
-        item for item in synchronized.workspace.manifest.verifiers
+        item
+        for item in synchronized.workspace.manifest.verifiers
         if item.kind == "test_report_scope"
     )
     verified = next(
@@ -168,7 +170,7 @@ def test_sensitive_command_arguments_are_redacted_from_the_report(tmp_path: Path
     assert report_text.count("[REDACTED]") == 2
 
 
-def test_check_rejects_unsafe_paths_empty_commands_and_dirty_manifest(tmp_path: Path) -> None:
+def test_check_rejects_unsafe_paths_and_empty_commands(tmp_path: Path) -> None:
     root = _repository(tmp_path)
 
     with pytest.raises(ValueError, match="repository-relative"):
@@ -181,15 +183,32 @@ def test_check_rejects_unsafe_paths_empty_commands_and_dirty_manifest(tmp_path: 
     with pytest.raises(ValueError, match="command is required"):
         run_and_record_check(root, command=(), include_paths=("parser.py",), scope="FULL")
 
-    manifest = root / "threadline.json"
-    manifest.write_text(manifest.read_text(encoding="utf-8") + "\n", encoding="utf-8")
-    with pytest.raises(ValueError, match=r"threadline\.json already has uncommitted changes"):
-        run_and_record_check(
-            root,
-            command=(sys.executable, "-c", "raise SystemExit(0)"),
-            include_paths=("parser.py",),
-            scope="FULL",
-        )
+
+def test_checkpoint_and_check_can_be_reviewed_in_one_commit(tmp_path: Path) -> None:
+    root = _repository(tmp_path)
+    checkpoint_workspace(
+        root,
+        statement="Whitespace handling is implemented",
+        next_action="Commit the implementation and verification together",
+    )
+
+    result = run_and_record_check(
+        root,
+        command=(sys.executable, "-c", "raise SystemExit(0)"),
+        include_paths=("parser.py",),
+        scope="FULL",
+    )
+
+    assert result["status"] == "PASSED"
+    manifest = ProjectManifest.model_validate_json(
+        (root / "threadline.json").read_text(encoding="utf-8")
+    )
+    assert manifest.observations[-1].statement == "Whitespace handling is implemented"
+    assert any(item.kind == "test_report_scope" for item in manifest.verifiers)
+    assert set(git(root, "status", "--short", "--untracked-files=all").splitlines()) == {
+        "M threadline.json",
+        "?? threadline/test-report.json",
+    }
 
 
 def test_cli_check_accepts_a_command_after_the_standard_separator(

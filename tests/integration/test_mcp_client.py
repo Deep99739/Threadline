@@ -20,6 +20,7 @@ from threadline.demo import (
 from threadline.mcp_server import create_mcp_server
 from threadline.service import ServiceScope
 from threadline.storage import ThreadlineStore
+from threadline.workspace import sync_local_workspace
 
 
 @pytest.fixture
@@ -242,9 +243,7 @@ async def test_live_repository_drift_forces_abstention_until_resync(tmp_path: Pa
         dirty = dirty_result.structured_content
         assert dirty["status"] == "dirty"
         assert dirty["data"]["handoff_current"] is False
-        assert dirty["data"]["working_repository"]["dirty_paths"] == [
-            "src/job_runner.py"
-        ]
+        assert dirty["data"]["working_repository"]["dirty_paths"] == ["src/job_runner.py"]
 
         dirty_context_result = await client.call_tool(
             "get_task_context",
@@ -297,8 +296,15 @@ async def test_live_repository_drift_forces_abstention_until_resync(tmp_path: Pa
 @pytest.mark.anyio
 async def test_stdio_process_is_consumed_by_real_client_session(tmp_path: Path) -> None:
     database_url = f"sqlite+pysqlite:///{tmp_path / 'stdio.db'}"
-    seeded = run_demo(database_url, tmp_path / "demo-repository")
-    version = seeded.handoff.context_pack.repository_version
+    seeded = run_demo(
+        f"sqlite+pysqlite:///{tmp_path / 'seed.db'}",
+        tmp_path / "demo-repository",
+    )
+    synchronized = sync_local_workspace(
+        seeded.repository_path,
+        database_url=database_url,
+    )
+    version = synchronized.handoff.context_pack.repository_version
     parameters = StdioServerParameters(
         command=sys.executable,
         args=[

@@ -15,7 +15,7 @@ from threadline.demo import (
 from threadline.mcp_server import create_mcp_server
 from threadline.service import ServiceScope
 from threadline.storage import ThreadlineStore
-from threadline.workspace import sync_local_workspace
+from threadline.workspace import load_local_workspace, workspace_database_url
 
 
 def serve_demo_mcp(database_url: str) -> None:
@@ -38,16 +38,28 @@ def serve_demo_mcp(database_url: str) -> None:
 
 
 def serve_workspace_mcp(repository_path: Path, database_url: str | None = None) -> None:
-    """Synchronize one exact Git workspace, then expose only read-only scoped tools."""
+    """Expose an explicitly synchronized Git workspace through read-only scoped tools."""
 
-    synced = sync_local_workspace(repository_path, database_url=database_url)
-    store = ThreadlineStore(synced.database_url)
+    workspace = load_local_workspace(repository_path)
+    resolved_database_url = workspace_database_url(workspace, database_url)
+    store = ThreadlineStore(resolved_database_url)
     try:
+        handoff = store.load_latest_handoff(
+            tenant_id=workspace.scope.tenant_id,
+            workspace_id=workspace.scope.workspace_id,
+            task_id=workspace.manifest.task.id,
+        )
+        version = handoff.get("repository_version", {})
+        if not isinstance(version, dict) or (
+            version.get("branch") != workspace.git_snapshot.repository_version.branch
+            or version.get("commit_sha") != workspace.git_snapshot.repository_version.commit_sha
+        ):
+            raise ValueError("compiled handoff is stale; run threadline sync first")
         create_mcp_server(
             store,
-            synced.workspace.scope,
-            synced.workspace.manifest.task.id,
-            synced.workspace.repository_path,
+            workspace.scope,
+            workspace.manifest.task.id,
+            workspace.repository_path,
         ).run("stdio")
     finally:
         store.close()

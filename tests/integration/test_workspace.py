@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 import tomllib
 from pathlib import Path
@@ -85,11 +86,30 @@ def test_workspace_requires_committed_configuration_and_syncs_exact_head(
     assert synced.handoff.content["next_action"] == (
         "Add an integration test for whitespace-only input"
     )
-    task_items = [
-        item for item in synced.handoff.context_pack.items if item.entity_type == "task"
-    ]
+    task_items = [item for item in synced.handoff.context_pack.items if item.entity_type == "task"]
     assert len(task_items) == 1
     assert task_items[0].citations[0].locator.uri.endswith("/threadline.json")
+
+    database_path = root / ".git" / "threadline" / "threadline.db"
+
+    def stored_counts() -> tuple[int, int, int]:
+        connection = sqlite3.connect(database_path)
+        try:
+            entity_count = connection.execute("SELECT COUNT(*) FROM context_entities").fetchone()[0]
+            evidence_count = connection.execute("SELECT COUNT(*) FROM evidence_content").fetchone()[
+                0
+            ]
+            handoff_count = connection.execute("SELECT COUNT(*) FROM handoffs").fetchone()[0]
+            return entity_count, evidence_count, handoff_count
+        finally:
+            connection.close()
+
+    first_counts = stored_counts()
+    first_content = synced.handoff.content
+    for _ in range(3):
+        repeated = sync_local_workspace(root)
+        assert repeated.handoff.content == first_content
+        assert stored_counts() == first_counts
 
     manifest_path = root / "threadline.json"
     manifest_path.write_text(manifest_path.read_text().replace("IN_PROGRESS", "PAUSED"))
@@ -203,11 +223,15 @@ async def test_real_stdio_workspace_server_exposes_committed_task(
     monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
     root, task_id = _initialized_repository(tmp_path)
     _commit_manifest(root)
+    synchronized = sync_local_workspace(root)
     profiles = build_client_profiles(
         root,
         python_executable=Path(sys.executable),
     )
     server = profiles["server"]
+    assert synchronized.handoff.context_pack.repository_version.commit_sha == git(
+        root, "rev-parse", "HEAD"
+    )
     parameters = StdioServerParameters(
         command=server["command"],
         args=server["args"],
@@ -237,7 +261,5 @@ async def test_real_stdio_workspace_server_exposes_committed_task(
     assert result.is_error is False
     assert result.structured_content["status"] == "ok"
     assert result.structured_content["data"]["objective"].startswith("Make parser")
-    assert result.structured_content["citations"][0]["locator"]["uri"].endswith(
-        "/threadline.json"
-    )
+    assert result.structured_content["citations"][0]["locator"]["uri"].endswith("/threadline.json")
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""

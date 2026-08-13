@@ -578,6 +578,15 @@ export function ThreadlineDemo() {
             <span>{proof.sample_size} executed cases</span>
             <strong>{proof.cases.filter((item) => item.passed).length} passed</strong>
             <p>{proof.repository_count} isolated temporary repositories</p>
+            {proof.context_efficiency && (
+              <p className="context-efficiency">
+                <b>
+                  {(proof.context_efficiency.compact_reduction_vs_full_ranked * 100).toFixed(1)}%
+                </b>{" "}
+                smaller default MCP handoff, with {proof.context_efficiency.citation_count} source
+                locators retained
+              </p>
+            )}
           </div>
           <div className="case-list">
             {proof.cases.map((item) => (

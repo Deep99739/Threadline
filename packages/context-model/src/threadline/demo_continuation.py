@@ -144,8 +144,8 @@ def _apply_expected_action(repository_path: Path, handoff: AgentHandoff) -> str:
         raise RuntimeError("Agent B refused: the required idempotency constraint is absent")
     if "Wire RetryPolicy into run_job" not in handoff.next_action:
         raise RuntimeError("Agent B refused: the expected next action was not selected")
-    if not handoff.evidence:
-        raise RuntimeError("Agent B refused: the next action has no inspectable evidence")
+    if not handoff.citations:
+        raise RuntimeError("Agent B refused: the next action has no inspectable citations")
 
     runner = repository_path / "src" / "job_runner.py"
     tests = repository_path / "tests" / "test_retry_policy.py"
@@ -261,9 +261,7 @@ async def run_agent_b_continuation(
 
     service.ingest(repository_path=repository_path, scope=scope)
 
-    async with Client(
-        create_mcp_server(store, scope, DEMO_TASK_ID, repository_path)
-    ) as client:
+    async with Client(create_mcp_server(store, scope, DEMO_TASK_ID, repository_path)) as client:
         stale_result = await client.call_tool(
             "list_stale_context",
             {
@@ -308,7 +306,7 @@ async def run_agent_b_continuation(
         initial_commit=initial.commit_sha,
         resulting_commit=resulting_commit,
         action_taken=handoff.next_action,
-        cited_evidence_count=len(handoff.evidence),
+        cited_evidence_count=len(handoff.citations),
         live_drift_refused_before_ingest=live_drift_refused_before_ingest,
         stale_items=tuple(item for item in stale_items if isinstance(item, dict)),
         stale_handoff_refused=stale_handoff_refused,

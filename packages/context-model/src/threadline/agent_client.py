@@ -21,7 +21,6 @@ class AgentHandoff:
     citations: tuple[dict[str, Any], ...]
     unknowns: tuple[str, ...]
     conflicts: tuple[str, ...]
-    evidence: tuple[dict[str, Any], ...]
 
 
 async def read_agent_handoff(
@@ -54,28 +53,6 @@ async def read_agent_handoff(
             raise RuntimeError("Threadline handoff has no continuation data")
 
         citations = payload.get("citations", [])
-        evidence: list[dict[str, Any]] = []
-        for citation in citations:
-            if not isinstance(citation, dict) or "evidence_id" not in citation:
-                continue
-            evidence_result = await client.call_tool(
-                "get_evidence",
-                {
-                    "task_id": str(task_id),
-                    "branch": branch,
-                    "commit_sha": commit_sha,
-                    "evidence_id": citation["evidence_id"],
-                },
-            )
-            if evidence_result.is_error or not isinstance(evidence_result.structured_content, dict):
-                raise RuntimeError("A cited handoff source could not be opened")
-            evidence_payload = evidence_result.structured_content
-            if evidence_payload.get("status") != "ok":
-                raise RuntimeError("A cited handoff source was denied")
-            evidence_data = evidence_payload.get("data")
-            if isinstance(evidence_data, dict):
-                evidence.append(evidence_data)
-
         return AgentHandoff(
             status=status,
             branch=branch,
@@ -86,5 +63,40 @@ async def read_agent_handoff(
             citations=tuple(item for item in citations if isinstance(item, dict)),
             unknowns=tuple(str(item) for item in payload.get("unknowns", [])),
             conflicts=tuple(str(item) for item in payload.get("conflicts", [])),
-            evidence=tuple(evidence),
         )
+
+
+async def read_cited_evidence(
+    server: MCPServer,
+    *,
+    task_id: UUID,
+    branch: str,
+    commit_sha: str,
+    citations: tuple[dict[str, Any], ...],
+) -> tuple[dict[str, Any], ...]:
+    """Open explicitly selected citations after the compact handoff has been reviewed."""
+
+    evidence: list[dict[str, Any]] = []
+    async with Client(server) as client:
+        for citation in citations:
+            evidence_id = citation.get("evidence_id")
+            if evidence_id is None:
+                continue
+            result = await client.call_tool(
+                "get_evidence",
+                {
+                    "task_id": str(task_id),
+                    "branch": branch,
+                    "commit_sha": commit_sha,
+                    "evidence_id": evidence_id,
+                },
+            )
+            if result.is_error or not isinstance(result.structured_content, dict):
+                raise RuntimeError("A selected handoff source could not be opened")
+            payload = result.structured_content
+            if payload.get("status") != "ok":
+                raise RuntimeError("A selected handoff source was denied")
+            data = payload.get("data")
+            if isinstance(data, dict):
+                evidence.append(data)
+    return tuple(evidence)

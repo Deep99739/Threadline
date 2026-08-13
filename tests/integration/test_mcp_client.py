@@ -89,6 +89,7 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         assert context["status"] == "partial"
         assert context["repository"]["commit"] == version.commit_sha
         assert context["data"]["next_action"] == seeded.handoff.content["next_action"]
+        assert "items" not in context["data"]
         assert context["citations"]
         assert context["unknowns"]
         assert context["conflicts"]
@@ -161,7 +162,17 @@ async def test_official_client_reads_bound_handoff_and_evidence(tmp_path: Path) 
         )
         assert missing_decision.structured_content["status"] == "abstained"
 
-        selected = context["data"]["items"][0]
+        detailed_context_result = await client.call_tool(
+            "get_task_context",
+            {
+                "task_id": str(DEMO_TASK_ID),
+                "branch": version.branch,
+                "commit_sha": version.commit_sha,
+                "include_items": True,
+            },
+        )
+        detailed_context = detailed_context_result.structured_content
+        selected = detailed_context["data"]["items"][0]
         explanation_result = await client.call_tool(
             "explain_context_selection",
             {

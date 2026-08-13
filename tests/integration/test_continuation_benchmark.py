@@ -18,10 +18,10 @@ async def test_continuation_benchmark_executes_failures_and_reports_small_denomi
 ) -> None:
     report = await run_continuation_benchmark(tmp_path / "benchmark")
 
-    assert report["sample_size"] == 11
+    assert report["sample_size"] == 12
     cases = report["cases"]
     assert isinstance(cases, list)
-    assert len(cases) == 11
+    assert len(cases) == 12
     assert all(case["passed"] for case in cases)
     metrics = report["metrics"]
     assert metrics["expected_next_action_accuracy"] == {
@@ -54,12 +54,18 @@ async def test_continuation_benchmark_executes_failures_and_reports_small_denomi
         "total": 1,
         "rate": 1.0,
     }
-    baselines = report["baseline_failures"]
-    assert baselines[0]["baseline_id"] == "B0"
-    assert baselines[0]["failure_observed"] is True
-    assert baselines[1]["baseline_id"] == "B2"
-    assert baselines[1]["failure_observed"] is True
+    efficiency = report["context_efficiency"]
+    assert efficiency["compact_mcp_bytes"] < efficiency["full_ranked_mcp_bytes"]
+    assert efficiency["compact_reduction_vs_full_ranked"] > 0.5
+    assert efficiency["citation_count"] >= 3
+    assert efficiency["headline_fields_preserved"] == [
+        "constraints",
+        "next_action",
+        "objective",
+        "verified_completed_work",
+    ]
+    assert report["comparative_context_paths"][0]["path"] == "compact Threadline handoff"
     assert report["claim_boundary"] == (
-        "Eleven deterministic synthetic regression cases; not an external accuracy, adoption, "
+        "Twelve deterministic synthetic regression cases; not an external accuracy, adoption, "
         "or production claim."
     )

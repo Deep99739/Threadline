@@ -16,7 +16,7 @@ def default_benchmark_path() -> Path | None:
         return Path(configured).expanduser().resolve()
 
     for parent in Path(__file__).resolve().parents:
-        candidate = parent / "evals" / "results" / "continuation-benchmark-v0.2.json"
+        candidate = parent / "evals" / "results" / "continuation-benchmark-v0.3.json"
         if candidate.is_file():
             return candidate
     return None

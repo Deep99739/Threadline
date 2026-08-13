@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -92,7 +93,7 @@ def _false_acceptance(accepted: int, total: int) -> dict[str, float | int]:
 
 
 async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
-    """Execute eleven synthetic trust cases and retain every case result."""
+    """Execute twelve synthetic trust cases and retain every case result."""
 
     if root.exists():
         raise FileExistsError(f"benchmark destination already exists: {root}")
@@ -156,9 +157,7 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
             workspace_id=scope.workspace_id,
             task_id=DEMO_TASK_ID,
         )
-        completion = next(
-            item for item in snapshot.claims if item.predicate == "all_tests_passed"
-        )
+        completion = next(item for item in snapshot.claims if item.predicate == "all_tests_passed")
         completion_rejected = completion.epistemic_state is not EpistemicState.VERIFIED
         cases.append(
             _case(
@@ -194,6 +193,70 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
         )
 
         server = create_mcp_server(store, scope, DEMO_TASK_ID, primary_repository)
+        async with Client(server) as client:
+            compact_result = await client.call_tool(
+                "get_task_context",
+                {
+                    "task_id": str(DEMO_TASK_ID),
+                    "branch": initial_version.branch,
+                    "commit_sha": initial_version.commit_sha,
+                },
+            )
+            full_result = await client.call_tool(
+                "get_task_context",
+                {
+                    "task_id": str(DEMO_TASK_ID),
+                    "branch": initial_version.branch,
+                    "commit_sha": initial_version.commit_sha,
+                    "include_items": True,
+                },
+            )
+        compact_payload = compact_result.structured_content
+        full_payload = full_result.structured_content
+        if not isinstance(compact_payload, dict) or not isinstance(full_payload, dict):
+            raise RuntimeError("MCP context measurement requires structured payloads")
+        compact_data = compact_payload.get("data")
+        full_data = full_payload.get("data")
+        required_compact_fields = {
+            "objective",
+            "constraints",
+            "verified_completed_work",
+            "next_action",
+        }
+        compact_fields_preserved = (
+            isinstance(compact_data, dict)
+            and required_compact_fields.issubset(compact_data)
+            and "items" not in compact_data
+            and isinstance(full_data, dict)
+            and bool(full_data.get("items"))
+            and bool(compact_payload.get("citations"))
+            and compact_payload.get("repository") == full_payload.get("repository")
+            and compact_payload.get("unknowns") == full_payload.get("unknowns")
+            and compact_payload.get("conflicts") == full_payload.get("conflicts")
+        )
+        compact_bytes = len(
+            json.dumps(compact_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        )
+        full_ranked_bytes = len(
+            json.dumps(full_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        )
+        cited_source_bytes = sum(len(content.encode("utf-8")) for content in contents.values())
+        compact_reduction = 1 - (compact_bytes / full_ranked_bytes)
+        compact_case_passed = compact_fields_preserved and compact_bytes < full_ranked_bytes
+        cases.append(
+            _case(
+                "EXEC-012",
+                "Preserve continuation decisions in the compact MCP handoff",
+                passed=compact_case_passed,
+                expected="headline decisions and citations without ranked item expansion",
+                observed=(
+                    f"{compact_bytes} compact bytes versus {full_ranked_bytes} full bytes; "
+                    f"{compact_reduction:.1%} reduction"
+                ),
+                failure_layer=None if compact_case_passed else "context_compilation",
+            )
+        )
+
         (primary_repository / "dirty-note.md").write_text("uncommitted\n", encoding="utf-8")
         async with Client(server) as client:
             dirty_result = await client.call_tool(
@@ -215,9 +278,7 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
                 passed=dirty_refused,
                 expected="abstained",
                 observed=str(
-                    dirty_payload.get("status")
-                    if isinstance(dirty_payload, dict)
-                    else None
+                    dirty_payload.get("status") if isinstance(dirty_payload, dict) else None
                 ),
                 failure_layer=None if dirty_refused else "freshness",
             )
@@ -257,9 +318,7 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
                 passed=moved_refused,
                 expected="abstained",
                 observed=str(
-                    moved_payload.get("status")
-                    if isinstance(moved_payload, dict)
-                    else None
+                    moved_payload.get("status") if isinstance(moved_payload, dict) else None
                 ),
                 failure_layer=None if moved_refused else "freshness",
             )
@@ -278,9 +337,7 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
                     "tool error"
                     if denied_result.is_error
                     else str(
-                        denied_payload.get("status")
-                        if isinstance(denied_payload, dict)
-                        else None
+                        denied_payload.get("status") if isinstance(denied_payload, dict) else None
                     )
                 ),
                 failure_layer=None if scope_denied else "authorization",
@@ -401,9 +458,7 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
     )
 
     synthetic_secret = "ghp_123456789012345678901234567890123456"
-    safe_content = redact_evidence_content(
-        f"RETRY_COUNT=3\nACCESS_TOKEN={synthetic_secret}\n"
-    )
+    safe_content = redact_evidence_content(f"RETRY_COUNT=3\nACCESS_TOKEN={synthetic_secret}\n")
     secret_blocked = (
         synthetic_secret not in safe_content.content
         and "RETRY_COUNT=3" in safe_content.content
@@ -439,9 +494,7 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
             passed=injection_flagged,
             expected="override, scope-expansion, and self-approval signals",
             observed=(
-                ", ".join(instruction_signals)
-                if instruction_signals
-                else "no instruction signals"
+                ", ".join(instruction_signals) if instruction_signals else "no instruction signals"
             ),
             failure_layer=None if injection_flagged else "evidence_safety",
         )
@@ -450,8 +503,8 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
     ordered = sorted(cases, key=lambda item: str(item["id"]))
     passed_count = sum(bool(item["passed"]) for item in ordered)
     return {
-        "report": "threadline-executed-continuation-benchmark-v0.2",
-        "dataset": "executed-synthetic-v0.2",
+        "report": "threadline-executed-continuation-benchmark-v0.3",
+        "dataset": "executed-synthetic-v0.3",
         "sample_size": len(ordered),
         "repository_count": 5,
         "cases": ordered,
@@ -484,25 +537,41 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
             ),
             "instruction_boundary_detection": _rate(int(injection_flagged), 1),
         },
-        "baseline_failures": [
+        "context_efficiency": {
+            "measurement": "minified UTF-8 JSON and cited source bytes; not model tokens or time",
+            "compact_mcp_bytes": compact_bytes,
+            "full_ranked_mcp_bytes": full_ranked_bytes,
+            "all_cited_source_bytes": cited_source_bytes,
+            "compact_reduction_vs_full_ranked": compact_reduction,
+            "headline_fields_preserved": sorted(required_compact_fields),
+            "exact_version_preserved": compact_payload.get("repository"),
+            "citation_count": len(compact_payload.get("citations", [])),
+            "unknown_count": len(compact_payload.get("unknowns", [])),
+            "conflict_count": len(compact_payload.get("conflicts", [])),
+        },
+        "comparative_context_paths": [
             {
-                "baseline_id": "B0",
-                "name": "latest transcript assertion",
-                "failure_observed": completion.epistemic_state is not EpistemicState.VERIFIED,
-                "failure": "The latest agent assertion says all tests pass without full evidence.",
+                "path": "compact Threadline handoff",
+                "bytes": compact_bytes,
+                "behavior": (
+                    "returns the exact version, decisions, uncertainty, and citation locators"
+                ),
             },
             {
-                "baseline_id": "B2",
-                "name": "lexical evidence only",
-                "failure_observed": bool(lexical) and relationship_found,
-                "failure": "Lexical retrieval returns evidence but not the typed CONSTRUCTS edge.",
+                "path": "full ranked Threadline handoff",
+                "bytes": full_ranked_bytes,
+                "behavior": "adds every selected context item and its ranking explanation",
+            },
+            {
+                "path": "open all cited source content",
+                "bytes": cited_source_bytes,
+                "behavior": "loads every cited source before the next action can begin",
             },
         ],
-        "failure_analysis": [
-            item for item in ordered if not item["passed"]
-        ],
+        "failure_analysis": [item for item in ordered if not item["passed"]],
         "limits": [
             "All cases are deterministic and synthetic.",
+            "Byte counts are a context-size proxy, not tokenizer-specific token or time savings.",
             "Only one expected next-action case and one unsupported-completion case are measured.",
             (
                 "Scope denial is application-layer local isolation, not hosted identity "
@@ -522,13 +591,10 @@ async def run_continuation_benchmark(root: Path) -> dict[str, Any]:
                 "Secret scanning recognizes bounded known patterns and does not replace "
                 "a provider scanner."
             ),
-            (
-                "Instruction signals warn the client but cannot guarantee client-model "
-                "compliance."
-            ),
+            ("Instruction signals warn the client but cannot guarantee client-model compliance."),
         ],
         "claim_boundary": (
-            "Eleven deterministic synthetic regression cases; not an external accuracy, adoption, "
+            "Twelve deterministic synthetic regression cases; not an external accuracy, adoption, "
             "or production claim."
         ),
     }

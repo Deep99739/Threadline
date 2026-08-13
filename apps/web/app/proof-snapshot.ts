@@ -21,14 +21,21 @@ export type ProofPayload = {
   repository_count: number;
   cases: BenchmarkCase[];
   metrics: Record<string, BenchmarkMetric>;
+  context_efficiency?: {
+    measurement: string;
+    compact_mcp_bytes: number;
+    full_ranked_mcp_bytes: number;
+    compact_reduction_vs_full_ranked: number;
+    citation_count: number;
+  };
   limits: string[];
   claim_boundary: string;
 };
 
 export const bundledProof: ProofPayload = {
-  report: "threadline-executed-continuation-benchmark-v0.2",
-  dataset: "executed-synthetic-v0.2",
-  sample_size: 11,
+  report: "threadline-executed-continuation-benchmark-v0.3",
+  dataset: "executed-synthetic-v0.3",
+  sample_size: 12,
   repository_count: 5,
   cases: [
     {
@@ -120,13 +127,28 @@ export const bundledProof: ProofPayload = {
       observed: "override_instructions, scope_expansion, self_approval",
       failure_layer: null,
     },
+    {
+      id: "EXEC-012",
+      title: "Preserve continuation decisions in the compact MCP handoff",
+      passed: true,
+      expected: "headline decisions and citations without ranked item expansion",
+      observed: "2695 compact bytes versus 10330 full bytes; 73.9% reduction",
+      failure_layer: null,
+    },
   ],
   metrics: {
-    regression_cases_passed: { correct: 11, total: 11, rate: 1 },
+    regression_cases_passed: { correct: 12, total: 12, rate: 1 },
     required_abstention_accuracy: { correct: 2, total: 2, rate: 1 },
     unsupported_completion_false_acceptance: { accepted: 0, total: 1, rate: 0 },
     known_secret_exposure: { accepted: 0, total: 1, rate: 0 },
     instruction_boundary_detection: { correct: 1, total: 1, rate: 1 },
+  },
+  context_efficiency: {
+    measurement: "minified UTF-8 JSON; not model tokens or time",
+    compact_mcp_bytes: 2695,
+    full_ranked_mcp_bytes: 10330,
+    compact_reduction_vs_full_ranked: 0.739109390125847,
+    citation_count: 6,
   },
   limits: [
     "All cases are deterministic and synthetic.",
@@ -134,5 +156,5 @@ export const bundledProof: ProofPayload = {
     "No external repository, human reviewer, or proprietary agent client was used.",
   ],
   claim_boundary:
-    "Eleven deterministic synthetic regression cases; not an external accuracy, adoption, or production claim.",
+    "Twelve deterministic synthetic regression cases; not an external accuracy, adoption, or production claim.",
 };

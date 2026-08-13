@@ -37,7 +37,8 @@ test("server-renders the complete Threadline product surface", async () => {
   assert.match(html, /run_job calls RetryPolicy/);
   assert.match(html, /CONTRADICTED/);
   assert.match(html, /A second agent continued the task from the handoff/);
-  assert.match(html, /Eleven deterministic synthetic regression cases/);
+  assert.match(html, /Twelve deterministic synthetic regression cases/);
+  assert.match(html, /73\.9%/);
   assert.match(html, /Keep your coding agent/);
   assert.match(html, /threadline connect codex/);
   assert.match(html, /The evidence contract/);

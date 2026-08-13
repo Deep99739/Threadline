@@ -1115,6 +1115,19 @@ footer a:focus-visible {
   margin: 7px 0 0;
 }
 
+.proof-summary .context-efficiency {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.proof-summary .context-efficiency b {
+  color: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 500;
+}
+
 .case-list {
   border-top: 1px solid var(--rule-strong);
 }

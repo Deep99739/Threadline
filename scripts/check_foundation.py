@@ -31,10 +31,10 @@ def main() -> None:
         raise SystemExit(f"Missing foundation paths: {', '.join(missing)}")
 
     adrs = sorted((ROOT / "docs" / "adr").glob("ADR-0??-*.md"))
-    expected_adrs = [f"ADR-{index:03d}" for index in range(1, 21)]
+    expected_adrs = [f"ADR-{index:03d}" for index in range(1, 22)]
     actual_adrs = [path.name[:7] for path in adrs]
     if actual_adrs != expected_adrs:
-        raise SystemExit(f"Expected contiguous ADRs 001-019, found: {actual_adrs}")
+        raise SystemExit(f"Expected contiguous ADRs 001-021, found: {actual_adrs}")
 
     cases = _load_cases()
     if not 25 <= len(cases) <= 40:

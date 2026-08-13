@@ -182,7 +182,7 @@ Every MCP server is bound to one task and repository scope. Clients begin with `
 | Tool | Purpose |
 |---|---|
 | `get_workspace_status` | Discover the active task and handoff freshness |
-| `get_task_context` | Read the current cited handoff |
+| `get_task_context` | Read the compact current cited handoff; request ranked items only when needed |
 | `get_evidence` | Inspect one cited evidence object |
 | `explain_context_selection` | See why an item entered the handoff |
 | `trace_decision` | Read a decision and its supporting evidence |
@@ -191,6 +191,11 @@ Every MCP server is bound to one task and repository scope. Clients begin with `
 | `list_stale_context` | Explain which context was invalidated |
 
 All eight tools are read-only. A dirty worktree or moved branch head causes Threadline to abstain until the repository is committed and synchronized again.
+
+`get_task_context` keeps the default continuation small: exact version, objective, constraints,
+verified work, next action, uncertainty, conflicts, and citation locators. Set
+`include_items=true` only when the client needs every ranked item and selection explanation; open
+source bodies individually with `get_evidence`.
 
 ## Architecture
 
@@ -214,19 +219,24 @@ The repository contains reproducible evidence for the behaviors Threadline depen
 
 - 144 automated tests with a 90% coverage gate.
 - 30 frozen continuation, conflict, freshness, retrieval, permission, injection, secret, ingestion, and degraded-mode cases.
-- An 11-case executed continuation benchmark covering cross-agent continuation, stale refusal, citation resolution, command evidence, scope denial, redaction, and instruction-boundary signals.
+- A 12-case executed continuation benchmark covering cross-agent continuation, stale refusal, citation resolution, command evidence, scope denial, redaction, instruction boundaries, and compact context preservation.
 - An end-to-end Agent B scenario that reads a handoff over MCP, changes code, runs tests, commits, observes stale refusal, and receives a newly verified handoff.
 - A lexical-versus-graph ablation showing the typed test-to-class relationship recovered by bounded graph traversal.
 
 Raw results are committed with the code:
 
-- [Executed continuation benchmark](./evals/results/continuation-benchmark-v0.2.json)
+- [Executed continuation benchmark](./evals/results/continuation-benchmark-v0.3.json)
 - [Primary continuation scenario](./evals/results/phase1-primary.json)
 - [Code-graph ablation](./evals/results/phase2-graph-ablation.json)
 
 ## Demo
 
 Open the [public product demo](https://threadline-context.kpt66dl43m.chatgpt.site) without an account. It presents the interactive evidence workbench, an executed continuation proof, the evidence contract, and the local adoption path.
+
+In the retained synthetic continuation fixture, the compact MCP response is 2,695 bytes versus
+10,330 bytes for the full ranked response, a 73.9% reduction while preserving the exact version,
+headline decisions, uncertainty, conflicts, and six citation locators. This is a minified UTF-8 byte
+measurement, not a model-specific token, time, cost, or external-adoption claim.
 
 To run the same product surface locally, create the deterministic handoff:
 

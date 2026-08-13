@@ -16,7 +16,7 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("evals/results/continuation-benchmark-v0.2.json"),
+        default=Path("evals/results/continuation-benchmark-v0.3.json"),
     )
     arguments = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="threadline-continuation-benchmark-") as temporary:

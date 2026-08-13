@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from threadline.agent_client import read_agent_handoff
+from threadline.agent_client import read_agent_handoff, read_cited_evidence
 from threadline.demo import (
     DEMO_ACTOR_ID,
     DEMO_REPOSITORY_ID,
@@ -101,15 +101,23 @@ async def run_phase1_evaluation(*, database_url: str, repository_path: Path) -> 
             task_id=DEMO_TASK_ID,
         )
         initial_version = snapshot.repository_version
+        server = create_mcp_server(store, scope, DEMO_TASK_ID, repository_path)
         handoff = await read_agent_handoff(
-            create_mcp_server(store, scope, DEMO_TASK_ID, repository_path),
+            server,
             task_id=DEMO_TASK_ID,
             branch=initial_version.branch,
             commit_sha=initial_version.commit_sha,
         )
+        evidence = await read_cited_evidence(
+            server,
+            task_id=DEMO_TASK_ID,
+            branch=initial_version.branch,
+            commit_sha=initial_version.commit_sha,
+            citations=handoff.citations,
+        )
         evidence_uris = {
             str(item.get("locator", {}).get("uri", ""))
-            for item in handoff.evidence
+            for item in evidence
             if isinstance(item.get("locator"), dict)
         }
 
@@ -179,7 +187,7 @@ async def run_phase1_evaluation(*, database_url: str, repository_path: Path) -> 
             next_action_correct=_action_is_correct(handoff.next_action),
             unsupported_completion_accepted=False,
             required_evidence_recall=_source_recall(evidence_uris),
-            citation_validity=_citation_validity(handoff.evidence),
+            citation_validity=_citation_validity(evidence),
             limitations=(
                 "One synthetic primary case; not a general accuracy claim.",
                 "The ranker is lexical and the action policy is deterministic.",
@@ -220,9 +228,7 @@ async def run_phase1_evaluation(*, database_url: str, repository_path: Path) -> 
                 completion_claim.epistemic_state is not EpistemicState.VERIFIED
             ),
             "changed_evidence_marked_stale": bool(proof.stale_items),
-            "live_repository_drift_refused_before_ingest": (
-                proof.live_drift_refused_before_ingest
-            ),
+            "live_repository_drift_refused_before_ingest": (proof.live_drift_refused_before_ingest),
             "stale_handoff_refused": proof.stale_handoff_refused,
             "post_change_full_suite_passed": "2 passed" in proof.test_output,
             "post_change_handoff_has_no_unknowns_or_conflicts": proof.final_status == "ok",

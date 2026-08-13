@@ -162,9 +162,7 @@ def create_mcp_server(
                 else "dirty"
                 if working_tree_dirty
                 else (
-                    "partial"
-                    if content.get("unknowns") or content.get("contradictions")
-                    else "ok"
+                    "partial" if content.get("unknowns") or content.get("contradictions") else "ok"
                 )
             ),
             data={
@@ -186,9 +184,7 @@ def create_mcp_server(
                     )
                 ]
                 if repository_moved
-                else [
-                    "The working tree is dirty; commit or revert changes before continuation."
-                ]
+                else ["The working tree is dirty; commit or revert changes before continuation."]
                 if working_tree_dirty
                 else ["The latest handoff is stale and must be recompiled before continuation."]
                 if not is_current
@@ -197,8 +193,13 @@ def create_mcp_server(
         )
 
     @server.tool(annotations=READ_ONLY, structured_output=True)
-    def get_task_context(task_id: UUID, branch: str, commit_sha: str) -> dict[str, Any]:
-        """Return the latest cited handoff only when its repository version matches exactly."""
+    def get_task_context(
+        task_id: UUID,
+        branch: str,
+        commit_sha: str,
+        include_items: bool = False,
+    ) -> dict[str, Any]:
+        """Return a compact cited handoff, with full ranked items only when requested."""
 
         snapshot, content = load(task_id)
         warning = _version_warning(
@@ -217,17 +218,19 @@ def create_mcp_server(
                 warnings=[warning],
             )
         status = "partial" if content.get("unknowns") or content.get("contradictions") else "ok"
+        data: dict[str, Any] = {
+            "objective": content["objective"],
+            "constraints": content["constraints"],
+            "verified_completed_work": content["verified_completed_work"],
+            "next_action": content["next_action"],
+        }
+        if include_items:
+            data["items"] = content["context_pack"]["items"]
         return _envelope(
             snapshot,
             content,
             status=status,
-            data={
-                "objective": content["objective"],
-                "constraints": content["constraints"],
-                "verified_completed_work": content["verified_completed_work"],
-                "next_action": content["next_action"],
-                "items": content["context_pack"]["items"],
-            },
+            data=data,
         )
 
     @server.tool(annotations=READ_ONLY, structured_output=True)

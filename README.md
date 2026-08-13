@@ -4,6 +4,8 @@
 
 [![CI](https://github.com/Deep99739/Threadline/actions/workflows/ci.yml/badge.svg)](https://github.com/Deep99739/Threadline/actions/workflows/ci.yml)
 
+[Live product demo](https://threadline-context.kpt66dl43m.chatgpt.site) · [Install](#install) · [Evaluation](#evaluation)
+
 Threadline gives the next developer or coding agent a current, cited picture of unfinished work. It binds claims, decisions, code relationships, and command results to an exact Git commit, then refuses to serve the handoff when the repository has moved.
 
 Use it beside Codex, Claude Code, Cursor, VS Code, Antigravity, or any terminal workflow. The default local path needs no model API key and no separately provisioned database.
@@ -199,7 +201,7 @@ The design decisions are documented in the [ADR index](./docs/adr/README.md). Se
 
 The repository contains reproducible evidence for the behaviors Threadline depends on:
 
-- 136 automated tests with a 90% coverage gate.
+- 137 automated tests with a 90% coverage gate.
 - 30 frozen continuation, conflict, freshness, retrieval, permission, injection, secret, ingestion, and degraded-mode cases.
 - An 11-case executed continuation benchmark covering cross-agent continuation, stale refusal, citation resolution, command evidence, scope denial, redaction, and instruction-boundary signals.
 - An end-to-end Agent B scenario that reads a handoff over MCP, changes code, runs tests, commits, observes stale refusal, and receives a newly verified handoff.
@@ -211,9 +213,11 @@ Raw results are committed with the code:
 - [Primary continuation scenario](./evals/results/phase1-primary.json)
 - [Code-graph ablation](./evals/results/phase2-graph-ablation.json)
 
-## Run the demo locally
+## Demo
 
-Create the deterministic handoff and start the product surface:
+Open the [public product demo](https://threadline-context.kpt66dl43m.chatgpt.site) without an account. It presents the interactive evidence workbench, an executed continuation proof, the evidence contract, and the local adoption path.
+
+To run the same product surface locally, create the deterministic handoff:
 
 ```bash
 make demo

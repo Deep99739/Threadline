@@ -167,7 +167,13 @@ def _verify_clean_clone() -> None:
                 cwd=root,
             )
         ).resolve()
-        if checkout.resolve() in installed_module.parents:
+        source_package = (
+            checkout / "packages" / "context-model" / "src" / "threadline"
+        ).resolve()
+        if (
+            source_package == installed_module.parent
+            or "site-packages" not in installed_module.parts
+        ):
             raise RuntimeError("Clean-clone proof used the source checkout instead of the wheel")
 
         repository = root / "user-repository"

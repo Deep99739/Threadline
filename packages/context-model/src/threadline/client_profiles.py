@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from threadline.git_repository import threadline_git_state_path
+from threadline.git_repository import exclude_local_worktree_path, threadline_git_state_path
 from threadline.workspace import LocalWorkspace, load_local_workspace
 
 OFFICIAL_DOCUMENTATION = {
@@ -178,13 +178,16 @@ def connect_client(
         addition = str(profile["content"])
         if target.exists():
             current = target.read_text(encoding="utf-8")
-            if "[mcp_servers.threadline]" in current:
+            if addition.strip() in current:
+                rendered = current
+            elif "[mcp_servers.threadline]" in current:
                 raise FileExistsError(
                     "Codex already has a project Threadline entry; review it before replacing"
                 )
-            if current and not current.endswith("\n"):
-                current += "\n"
-            rendered = current + ("\n" if current else "") + addition
+            else:
+                if current and not current.endswith("\n"):
+                    current += "\n"
+                rendered = current + ("\n" if current else "") + addition
         else:
             rendered = addition
     else:
@@ -203,15 +206,17 @@ def connect_client(
     changed = previous != rendered
     if changed:
         target.write_text(rendered, encoding="utf-8")
+    excluded_locally = exclude_local_worktree_path(root, target.relative_to(root).as_posix())
     return {
         "client": client_name,
         "path": str(target),
         "changed": changed,
+        "excluded_locally": excluded_locally,
         "scope": "project",
         "contains_secrets": False,
         "tools": "read-only",
         "next_steps": [
-            f"Review and commit {target.relative_to(root)} if the team should share it.",
+            f"Review {target.relative_to(root)}; Threadline keeps it local by default.",
             "Run threadline doctor . to confirm the exact handoff is current.",
             "Open the client and approve the local MCP server when prompted.",
         ],

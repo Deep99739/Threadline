@@ -10,17 +10,88 @@ from pydantic import ValidationError
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
-from threadline.git_repository import read_git_working_state
-from threadline.manifest import ProjectManifest, read_worktree_manifest
+from threadline.client_profiles import connect_client
+from threadline.git_repository import (
+    commit_exact_paths,
+    read_git_working_state,
+    read_worktree_dirty_paths,
+    resolve_git_root,
+)
+from threadline.manifest import (
+    MANIFEST_PATH,
+    ProjectManifest,
+    initialize_manifest,
+    read_worktree_manifest,
+)
 from threadline.storage import ThreadlineStore
 from threadline.workspace import (
     load_local_workspace,
+    sync_local_workspace,
     workspace_database_url,
 )
 
 
 def _check(code: str, status: str, detail: str) -> dict[str, str]:
     return {"code": code, "status": status, "detail": detail}
+
+
+def onboard_workspace(
+    repository_path: Path,
+    *,
+    objective: str,
+    next_action: str,
+    client: str,
+    python_executable: Path | None = None,
+) -> dict[str, Any]:
+    """Create the contract, compile context, and connect one client in one safe command."""
+
+    root = resolve_git_root(repository_path)
+    dirty_paths = read_worktree_dirty_paths(root)
+    if dirty_paths:
+        raise ValueError(
+            "onboarding requires a clean working tree; commit or revert: "
+            + ", ".join(dirty_paths)
+        )
+
+    manifest_path = root / MANIFEST_PATH
+    created_manifest_commit: str | None = None
+    if manifest_path.exists():
+        _existing_root, manifest = read_worktree_manifest(root)
+        if manifest.task.objective != objective or manifest.task.next_action != next_action:
+            raise ValueError(
+                "threadline.json already defines a different task; use checkpoint to change it"
+            )
+    else:
+        _path, manifest = initialize_manifest(
+            root,
+            objective=objective,
+            next_action=next_action,
+        )
+        created_manifest_commit = commit_exact_paths(
+            root,
+            (MANIFEST_PATH,),
+            "Add Threadline context",
+        )
+
+    synced = sync_local_workspace(root)
+    connection = connect_client(
+        root,
+        client,
+        python_executable=python_executable,
+    )
+    report = inspect_workspace(root)
+    if not report["ready"]:
+        raise RuntimeError("onboarding did not produce a current trusted handoff")
+    return {
+        "ready": True,
+        "repository": str(root),
+        "task_id": str(manifest.task.id),
+        "commit_created": created_manifest_commit,
+        "context_commit": synced.handoff.context_pack.repository_version.commit_sha,
+        "client": connection,
+        "requires_api_key": False,
+        "first_action": f"Open {client} in this repository and ask for Threadline status.",
+    }
 
 
 def inspect_workspace(repository_path: Path) -> dict[str, Any]:

@@ -14,6 +14,7 @@ from threadline.product_workflow import (
     checkpoint_workspace,
     handoff_content,
     inspect_workspace,
+    onboard_workspace,
     render_handoff_markdown,
 )
 from threadline.workspace import sync_local_workspace
@@ -121,7 +122,84 @@ def test_connect_merges_one_project_client_without_overwriting_other_servers(
         "--repository",
         str(root),
     ]
-    assert result["next_steps"][0].startswith("Review and commit")
+    assert result["next_steps"][0].startswith("Review")
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+
+def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = tmp_path / "first-use-project"
+    root.mkdir()
+    git(root, "init", "-b", "main")
+    git(root, "config", "user.name", "Repository Owner")
+    git(root, "config", "user.email", "owner@example.invalid")
+    (root / "parser.py").write_text(
+        "def parse(value: str) -> str:\n    return value.strip()\n",
+        encoding="utf-8",
+    )
+    git(root, "add", "parser.py")
+    git(root, "commit", "-m", "Add parser")
+
+    result = onboard_workspace(
+        root,
+        objective="Make parser continuation safe",
+        next_action="Add whitespace integration coverage",
+        client="codex",
+        python_executable=Path(sys.executable),
+    )
+
+    assert result["ready"] is True
+    assert result["commit_created"] == git(root, "rev-parse", "HEAD")
+    assert result["context_commit"] == result["commit_created"]
+    assert result["requires_api_key"] is False
+    assert result["client"]["changed"] is True
+    assert result["client"]["excluded_locally"] is True
+    assert (root / ".codex" / "config.toml").is_file()
+    assert (root / ".git" / "threadline" / "threadline.db").is_file()
+    assert git(root, "log", "-1", "--pretty=%s") == "Add Threadline context"
+    assert git(root, "ls-files", "threadline.json") == "threadline.json"
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
+    assert inspect_workspace(root)["ready"] is True
+
+    repeated = onboard_workspace(
+        root,
+        objective="Make parser continuation safe",
+        next_action="Add whitespace integration coverage",
+        client="codex",
+        python_executable=Path(sys.executable),
+    )
+
+    assert repeated["ready"] is True
+    assert repeated["commit_created"] is None
+    assert repeated["client"]["changed"] is False
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+
+def test_onboard_refuses_existing_work_without_creating_product_files(tmp_path: Path) -> None:
+    root = tmp_path / "dirty-project"
+    root.mkdir()
+    git(root, "init", "-b", "main")
+    git(root, "config", "user.name", "Repository Owner")
+    git(root, "config", "user.email", "owner@example.invalid")
+    (root / "README.md").write_text("# Project\n", encoding="utf-8")
+    git(root, "add", "README.md")
+    git(root, "commit", "-m", "Initialize project")
+    (root / "unfinished.py").write_text("raise NotImplementedError\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="onboarding requires a clean working tree"):
+        onboard_workspace(
+            root,
+            objective="Continue unfinished work",
+            next_action="Implement the function",
+            client="codex",
+            python_executable=Path(sys.executable),
+        )
+
+    assert not (root / "threadline.json").exists()
+    assert not (root / ".codex").exists()
 
 
 def test_checkpoint_records_agent_text_as_asserted_and_preserves_dirty_work(

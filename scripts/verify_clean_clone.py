@@ -65,6 +65,8 @@ def _export_head(destination: Path) -> None:
 def _create_repository(destination: Path) -> None:
     destination.mkdir()
     _git(destination, "init", "-b", "main")
+    _git(destination, "config", "user.name", "Threadline Clean Clone")
+    _git(destination, "config", "user.email", "clean-clone@example.invalid")
     (destination / "parser.py").write_text(
         "def parse(value: str) -> str:\n    return value.strip()\n",
         encoding="utf-8",
@@ -156,40 +158,39 @@ def _verify_clean_clone() -> None:
         python = virtual_environment / "bin" / "python"
         threadline = virtual_environment / "bin" / "threadline"
         _run(
-            [str(python), "-m", "pip", "install", "--disable-pip-version-check", "-e", "."],
+            [str(python), "-m", "pip", "install", "--disable-pip-version-check", "."],
             cwd=checkout,
         )
+        installed_module = Path(
+            _run(
+                [str(python), "-c", "import threadline; print(threadline.__file__)"],
+                cwd=root,
+            )
+        ).resolve()
+        if checkout.resolve() in installed_module.parents:
+            raise RuntimeError("Clean-clone proof used the source checkout instead of the wheel")
 
         repository = root / "user-repository"
         _create_repository(repository)
-        initialized = json.loads(
+        onboarded = json.loads(
             _run(
                 [
                     str(threadline),
-                    "init",
+                    "onboard",
                     str(repository),
                     "--objective",
                     "Preserve parser behavior across an agent handoff",
                     "--next-action",
                     "Add a whitespace-only integration test",
+                    "--client",
+                    "cursor",
+                    "--python-executable",
+                    str(python),
                 ],
                 cwd=checkout,
             )
         )
-        _git(repository, "add", "threadline.json")
-        _git(
-            repository,
-            "-c",
-            "user.name=Threadline Clean Clone",
-            "-c",
-            "user.email=clean-clone@example.invalid",
-            "commit",
-            "-m",
-            "Add Threadline context",
-        )
-        synchronized = json.loads(
-            _run([str(threadline), "sync", str(repository)], cwd=checkout)
-        )
+        synchronized = {"commit": onboarded["context_commit"]}
         diagnosed = json.loads(
             _run([str(threadline), "doctor", str(repository)], cwd=checkout)
         )
@@ -209,35 +210,9 @@ def _verify_clean_clone() -> None:
                 cwd=checkout,
             )
         )
-        connected = json.loads(
-            _run(
-                [
-                    str(threadline),
-                    "connect",
-                    "cursor",
-                    str(repository),
-                    "--python-executable",
-                    str(python),
-                ],
-                cwd=checkout,
-            )
-        )
+        connected = onboarded["client"]
         cursor_profile = json.loads(
             (repository / ".cursor" / "mcp.json").read_text(encoding="utf-8")
-        )
-        _git(repository, "add", ".cursor/mcp.json")
-        _git(
-            repository,
-            "-c",
-            "user.name=Threadline Clean Clone",
-            "-c",
-            "user.email=clean-clone@example.invalid",
-            "commit",
-            "-m",
-            "Connect Threadline to Cursor",
-        )
-        synchronized = json.loads(
-            _run([str(threadline), "sync", str(repository)], cwd=checkout)
         )
         checked = json.loads(
             _run(
@@ -321,8 +296,9 @@ def _verify_clean_clone() -> None:
                 {
                     "status": "passed",
                     "installed_version": "0.1.0",
-                    "task_id": initialized["task_id"],
+                    "task_id": onboarded["task_id"],
                     "synchronized_commit": synchronized["commit"],
+                    "installed_module": str(installed_module),
                     "clients": sorted(profiles["clients"]),
                     "doctor_ready": diagnosed["ready"],
                     "terminal_handoff_cited": "repo://" in rendered_handoff,

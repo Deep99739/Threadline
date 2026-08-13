@@ -22,6 +22,7 @@ from threadline.product_workflow import (
     checkpoint_workspace,
     handoff_content,
     inspect_workspace,
+    onboard_workspace,
     render_handoff_markdown,
 )
 from threadline.workspace import sync_local_workspace
@@ -42,6 +43,19 @@ def _parser() -> argparse.ArgumentParser:
     init.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
     init.add_argument("--objective", required=True)
     init.add_argument("--next-action", required=True)
+
+    onboard = subparsers.add_parser(
+        "onboard", help="initialize, synchronize, and connect one coding client"
+    )
+    onboard.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    onboard.add_argument("--objective", required=True)
+    onboard.add_argument("--next-action", required=True)
+    onboard.add_argument(
+        "--client",
+        choices=("codex", "claude", "cursor", "vscode", "antigravity"),
+        required=True,
+    )
+    onboard.add_argument("--python-executable", type=Path)
 
     sync = subparsers.add_parser(
         "sync", help="ingest and compile the exact committed repository state"
@@ -152,6 +166,20 @@ def main(arguments: Sequence[str] | None = None) -> None:
                         "threadline sync."
                     ),
                 },
+                indent=2,
+            )
+        )
+        return
+    if parsed.command == "onboard":
+        print(
+            json.dumps(
+                onboard_workspace(
+                    parsed.repository,
+                    objective=parsed.objective,
+                    next_action=parsed.next_action,
+                    client=parsed.client,
+                    python_executable=parsed.python_executable,
+                ),
                 indent=2,
             )
         )

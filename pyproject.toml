@@ -45,6 +45,9 @@ package-dir = { "" = "packages/context-model/src" }
 [tool.setuptools.packages.find]
 where = ["packages/context-model/src"]
 
+[tool.setuptools.package-data]
+threadline = ["migration_scripts/script.py.mako"]
+
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers --cov=packages/context-model/src/threadline --cov-report=term-missing --cov-fail-under=90"
 testpaths = ["tests"]

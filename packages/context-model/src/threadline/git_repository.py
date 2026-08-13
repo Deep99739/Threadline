@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import UUID
 
 from threadline.models import Evidence, EvidenceLocator, RepositoryVersion, utc_now
@@ -91,12 +91,87 @@ def threadline_git_state_path(path: Path) -> Path:
     return (root / git_path).resolve()
 
 
+def exclude_local_worktree_path(path: Path, relative_path: str) -> bool:
+    """Keep a machine-specific generated file out of Git without editing .gitignore."""
+
+    requested = PurePosixPath(relative_path)
+    if requested.is_absolute() or ".." in requested.parts or relative_path in {"", "."}:
+        raise ValueError("local exclusion must be a repository-relative path")
+    root = resolve_git_root(path)
+    tracked = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "--error-unmatch", "--", relative_path],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if tracked.returncode == 0:
+        return False
+    raw_exclude = Path(_git(root, "rev-parse", "--git-path", "info/exclude"))
+    exclude_path = raw_exclude if raw_exclude.is_absolute() else root / raw_exclude
+    exclude_path.parent.mkdir(parents=True, exist_ok=True)
+    current = exclude_path.read_text(encoding="utf-8") if exclude_path.exists() else ""
+    entries = {
+        line.strip()
+        for line in current.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    normalized = requested.as_posix()
+    if normalized in entries:
+        return False
+    separator = "" if not current or current.endswith("\n") else "\n"
+    with exclude_path.open("a", encoding="utf-8") as handle:
+        handle.write(f"{separator}{normalized}\n")
+    return True
+
+
+def commit_exact_paths(path: Path, relative_paths: tuple[str, ...], message: str) -> str:
+    """Commit only the named generated files, refusing any pre-existing repository drift."""
+
+    root = resolve_git_root(path)
+    paths = tuple(dict.fromkeys(PurePosixPath(item).as_posix() for item in relative_paths))
+    if not paths or any(
+        PurePosixPath(item).is_absolute() or ".." in PurePosixPath(item).parts for item in paths
+    ):
+        raise ValueError("commit paths must be non-empty repository-relative paths")
+    dirty_paths = set(read_worktree_dirty_paths(root))
+    if dirty_paths != set(paths):
+        unexpected = ", ".join(sorted(dirty_paths - set(paths))) or "none"
+        missing = ", ".join(sorted(set(paths) - dirty_paths)) or "none"
+        raise GitRepositoryError(
+            f"automatic commit refused; unexpected paths: {unexpected}; missing paths: {missing}"
+        )
+    _git(root, "add", "--", *paths)
+    staged = set(_git(root, "diff", "--cached", "--name-only", "-z", strip=False).split("\0"))
+    staged.discard("")
+    if staged != set(paths):
+        raise GitRepositoryError("automatic commit refused because the staged paths changed")
+    _git(root, "commit", "-m", message)
+    return _git(root, "rev-parse", "HEAD")
+
+
 def read_git_working_state(path: Path, repository_id: UUID) -> GitWorkingState:
     """Read the live branch, HEAD, and dirty paths without trusting a caller-supplied version."""
 
     root = resolve_git_root(path)
     branch = _git(root, "branch", "--show-current")
     commit_sha = _git(root, "rev-parse", "HEAD")
+    dirty_paths = read_worktree_dirty_paths(root)
+    return GitWorkingState(
+        root=root,
+        repository_version=RepositoryVersion(
+            repository_id=repository_id,
+            branch=branch,
+            commit_sha=commit_sha,
+        ),
+        dirty_paths=dirty_paths,
+    )
+
+
+def read_worktree_dirty_paths(path: Path) -> tuple[str, ...]:
+    """Return staged, unstaged, and untracked paths without requiring a manifest."""
+
+    root = resolve_git_root(path)
     status = _git(
         root,
         "status",
@@ -122,16 +197,7 @@ def read_git_working_state(path: Path, repository_id: UUID) -> GitWorkingState:
                 dirty.append(prior_path)
             index += 1
         index += 1
-    dirty_paths = tuple(dict.fromkeys(dirty))
-    return GitWorkingState(
-        root=root,
-        repository_version=RepositoryVersion(
-            repository_id=repository_id,
-            branch=branch,
-            commit_sha=commit_sha,
-        ),
-        dirty_paths=dirty_paths,
-    )
+    return tuple(dict.fromkeys(dirty))
 
 
 def read_git_snapshot(path: Path, repository_id: UUID) -> GitSnapshot:

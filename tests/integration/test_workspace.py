@@ -176,6 +176,43 @@ def test_cli_init_and_sync_return_machine_readable_state(
     assert profiles["safety"]["writes_client_configuration"] is False
 
 
+def test_cli_onboard_returns_first_value_in_one_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = tmp_path / "onboarded-project"
+    root.mkdir()
+    git(root, "init", "-b", "main")
+    git(root, "config", "user.name", "Repository Owner")
+    git(root, "config", "user.email", "owner@example.invalid")
+    (root / "README.md").write_text("# Onboarding target\n", encoding="utf-8")
+    git(root, "add", "README.md")
+    git(root, "commit", "-m", "Initialize target")
+
+    main(
+        [
+            "onboard",
+            str(root),
+            "--objective",
+            "Preserve verified continuation context",
+            "--next-action",
+            "Inspect the current handoff",
+            "--client",
+            "codex",
+            "--python-executable",
+            sys.executable,
+        ]
+    )
+    result = json.loads(capsys.readouterr().out)
+
+    assert result["ready"] is True
+    assert result["context_commit"] == git(root, "rev-parse", "HEAD")
+    assert result["first_action"].startswith("Open codex")
+    assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
+
+
 def test_client_profiles_are_project_scoped_reviewable_and_secret_free(tmp_path: Path) -> None:
     root, _ = _initialized_repository(tmp_path)
     _commit_manifest(root)

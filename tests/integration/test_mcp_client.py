@@ -301,7 +301,15 @@ async def test_stdio_process_is_consumed_by_real_client_session(tmp_path: Path) 
     version = seeded.handoff.context_pack.repository_version
     parameters = StdioServerParameters(
         command=sys.executable,
-        args=["-m", "threadline", "mcp", "--demo", "--database-url", database_url],
+        args=[
+            "-m",
+            "threadline",
+            "mcp",
+            "--repository",
+            str(seeded.repository_path),
+            "--database-url",
+            database_url,
+        ],
         cwd=PROJECT_ROOT,
     )
 

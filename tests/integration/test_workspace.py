@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tomllib
 from pathlib import Path
 
@@ -141,7 +142,7 @@ def test_cli_init_and_sync_return_machine_readable_state(
             "clients",
             str(root),
             "--python-executable",
-            str(PROJECT_ROOT / ".venv" / "bin" / "python"),
+            sys.executable,
         ]
     )
     profiles = json.loads(capsys.readouterr().out)
@@ -161,11 +162,11 @@ def test_client_profiles_are_project_scoped_reviewable_and_secret_free(tmp_path:
 
     profiles = build_client_profiles(
         root,
-        python_executable=PROJECT_ROOT / ".venv" / "bin" / "python",
+        python_executable=Path(sys.executable),
     )
 
     clients = profiles["clients"]
-    assert profiles["server"]["command"] == str(PROJECT_ROOT / ".venv" / "bin" / "python")
+    assert profiles["server"]["command"] == str(Path(sys.executable).absolute())
     assert clients["cursor"]["path"] == ".cursor/mcp.json"
     assert clients["vscode"]["content"]["servers"]["threadline"]["type"] == "stdio"
     assert clients["antigravity"]["path"] == ".agents/mcp_config.json"
@@ -204,7 +205,7 @@ async def test_real_stdio_workspace_server_exposes_committed_task(
     _commit_manifest(root)
     profiles = build_client_profiles(
         root,
-        python_executable=PROJECT_ROOT / ".venv" / "bin" / "python",
+        python_executable=Path(sys.executable),
     )
     server = profiles["server"]
     parameters = StdioServerParameters(

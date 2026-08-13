@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
-from tests.helpers import PROJECT_ROOT, git
+from tests.helpers import git
 
 from threadline.client_profiles import connect_client
 from threadline.manifest import ProjectManifest, initialize_manifest
@@ -108,7 +109,7 @@ def test_connect_merges_one_project_client_without_overwriting_other_servers(
     result = connect_client(
         root,
         "cursor",
-        python_executable=PROJECT_ROOT / ".venv" / "bin" / "python",
+        python_executable=Path(sys.executable),
     )
     payload = json.loads(target.read_text(encoding="utf-8"))
 

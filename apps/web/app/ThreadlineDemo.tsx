@@ -629,29 +629,15 @@ export function ThreadlineDemo() {
           <li>
             <span>01</span>
             <div>
-              <strong>Initialize the task contract</strong>
-              <code>threadline init . --objective &quot;Fix parser drift&quot; --next-action &quot;Add the integration check&quot;</code>
+              <strong>Install Threadline once</strong>
+              <code>pipx install git+https://github.com/Deep99739/Threadline.git</code>
             </div>
           </li>
           <li>
             <span>02</span>
             <div>
-              <strong>Connect one project-scoped client</strong>
-              <code>threadline connect codex .</code>
-            </div>
-          </li>
-          <li>
-            <span>03</span>
-            <div>
-              <strong>Record real command evidence</strong>
-              <code>threadline check . --scope FULL --include parser.py -- pytest -q</code>
-            </div>
-          </li>
-          <li>
-            <span>04</span>
-            <div>
-              <strong>Hand off at the exact commit</strong>
-              <code>threadline sync . &amp;&amp; threadline handoff .</code>
+              <strong>Onboard a repository and client</strong>
+              <code>threadline onboard . --objective &quot;Fix parser drift&quot; --next-action &quot;Add the integration check&quot; --client codex</code>
             </div>
           </li>
         </ol>

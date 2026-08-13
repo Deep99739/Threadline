@@ -3,8 +3,11 @@
 **Evidence-bound handoffs for coding agents.**
 
 [![CI](https://github.com/Deep99739/Threadline/actions/workflows/ci.yml/badge.svg)](https://github.com/Deep99739/Threadline/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Deep99739/Threadline)](https://github.com/Deep99739/Threadline/releases/latest)
+[![License](https://img.shields.io/github/license/Deep99739/Threadline)](./LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12--3.14-3776AB)](./pyproject.toml)
 
-[Live product demo](https://threadline-context.kpt66dl43m.chatgpt.site) · [Install](#install) · [Evaluation](#evaluation)
+[Live product demo](https://threadline-context.vercel.app) · [Quick start](#quick-start) · [Evaluation](#evaluation)
 
 Threadline gives the next developer or coding agent a current, cited picture of unfinished work. It binds claims, decisions, code relationships, and command results to an exact Git commit, then refuses to serve the handoff when the repository has moved.
 
@@ -22,6 +25,13 @@ Coding sessions produce plenty of text, but text alone does not answer the quest
 - What should the next agent do first?
 
 Threadline treats every summary as a set of claims, not as project truth.
+
+| Ordinary session memory | Threadline |
+|---|---|
+| Describes what probably happened | Cites what the repository can prove |
+| Floats independently of Git state | Binds every handoff to branch and commit |
+| Smooths over missing or conflicting evidence | Preserves unknowns and contradictions |
+| Can outlive the code it describes | Refuses reads when the worktree or commit moves |
 
 ## What Threadline does
 
@@ -68,7 +78,7 @@ Threadline uses explicit evidence states:
 | `SUPERSEDED` | A later decision replaced the earlier one |
 | `UNKNOWN` | Available evidence is insufficient |
 
-## Install
+## Quick start
 
 Requirements:
 
@@ -84,12 +94,9 @@ pipx install git+https://github.com/Deep99739/Threadline.git
 ```
 
 On Linux, install `pipx` with the operating system package manager, then run the same final two
-commands. Open a new terminal after `ensurepath` the first time. Docker is not required for local
-use; it is only needed for PostgreSQL-backed development and release checks.
+commands. Open a new terminal after `ensurepath` the first time.
 
-## Add Threadline to a repository
-
-Onboard one repository and coding client:
+From a clean Git repository, onboard the task and one coding client:
 
 ```bash
 threadline onboard /path/to/your-repository \
@@ -108,10 +115,11 @@ Onboarding requires a clean Git working tree. In one command, Threadline:
 - keeps the machine-specific client profile local; and
 - performs a real MCP handshake and reports client registration separately.
 
-It uses your configured Git identity for the context commit and does not require an API key. Local
-derived state stays at `.git/threadline/threadline.db`. Repository-local Git hooks refresh the
-handoff after commits, checkouts, merges, and rebases. Existing custom hooks are never replaced;
-when Threadline reports a hook conflict, run `threadline sync .` after the repository changes.
+It uses your configured Git identity for the context commit and does not require an API key,
+Docker, or an external database. Local derived state stays at `.git/threadline/threadline.db`.
+Repository-local Git hooks refresh the handoff after commits, checkouts, merges, and rebases.
+Existing custom hooks are never replaced; when Threadline reports a hook conflict, run
+`threadline sync .` after the repository changes.
 
 Confirm or read the resulting handoff at any time:
 
@@ -122,8 +130,9 @@ threadline handoff .
 ```
 
 Codex deliberately ignores project `.codex/config.toml` settings until you trust the repository.
-Review the repository, choose **Trust** in Codex, reopen it, and run `threadline verify-client codex
-.`. Threadline reports this requirement; it never grants trust to itself.
+Review the repository, choose **Trust** in Codex, reopen it, and run
+`threadline verify-client codex .`. Threadline reports this requirement; it never grants trust to
+itself.
 
 The lower-level `init`, `sync`, `clients`, and `connect` commands remain available for custom
 workflows.
@@ -234,7 +243,7 @@ The design decisions are documented in the [ADR index](./docs/adr/README.md). Se
 
 The repository contains reproducible evidence for the behaviors Threadline depends on:
 
-- 144 automated tests with a 90% coverage gate.
+- 171 Python tests with a 90% coverage gate, plus server-rendered website checks.
 - 30 frozen continuation, conflict, freshness, retrieval, permission, injection, secret, ingestion, and degraded-mode cases.
 - A 12-case executed continuation benchmark covering cross-agent continuation, stale refusal, citation resolution, command evidence, scope denial, redaction, instruction boundaries, and compact context preservation.
 - An end-to-end Agent B scenario that reads a handoff over MCP, changes code, runs tests, commits, observes stale refusal, and receives a newly verified handoff.
@@ -248,7 +257,9 @@ Raw results are committed with the code:
 
 ## Demo
 
-Open the [public product demo](https://threadline-context.kpt66dl43m.chatgpt.site) without an account. It presents the interactive evidence workbench, an executed continuation proof, the evidence contract, and the local adoption path.
+Open the [public product demo](https://threadline-context.vercel.app) without an account. It presents
+the interactive evidence workbench, an executed continuation proof, the evidence contract, and the
+local adoption path.
 
 In the retained synthetic continuation fixture, the compact MCP response is 2,695 bytes versus
 10,330 bytes for the full ranked response, a 73.9% reduction while preserving the exact version,

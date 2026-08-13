@@ -43,13 +43,18 @@ const siteMetadata: Metadata = {
   },
 };
 
+const canonicalSiteUrl = "https://threadline-context.vercel.app";
+
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
   const forwardedHost = requestHeaders.get("x-forwarded-host");
   const host = forwardedHost ?? requestHeaders.get("host") ?? "localhost:3000";
   const forwardedProtocol = requestHeaders.get("x-forwarded-proto");
   const protocol = forwardedProtocol ?? (host.startsWith("localhost") ? "http" : "https");
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? `${protocol}://${host}`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ??
+    (process.env.VERCEL_ENV === "production"
+      ? canonicalSiteUrl
+      : `${protocol}://${host}`);
 
   return {
     ...siteMetadata,

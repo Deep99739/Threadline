@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { BrandMark } from "./BrandMark";
 import {
   bundledDecision,
   bundledDemo,
@@ -262,11 +263,7 @@ export function ThreadlineDemo() {
     <main className="site-shell">
       <header className="site-header">
         <a className="wordmark" href="#top" aria-label="Threadline home">
-          <span className="wordmark-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <BrandMark className="wordmark-mark" />
           <span>threadline</span>
         </a>
         <nav aria-label="Primary navigation">
@@ -698,11 +695,7 @@ export function ThreadlineDemo() {
 
       <footer>
         <a className="wordmark" href="#top" aria-label="Threadline home">
-          <span className="wordmark-mark" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <BrandMark className="wordmark-mark" />
           <span>threadline</span>
         </a>
         <p>Evidence-bound engineering context.</p>

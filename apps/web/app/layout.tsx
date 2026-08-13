@@ -28,8 +28,8 @@ const siteMetadata: Metadata = {
     images: [
       {
         url: "/og.png",
-        width: 1731,
-        height: 909,
+        width: 1280,
+        height: 640,
         alt: "Threadline: Resume engineering work from evidence, not summaries.",
       },
     ],

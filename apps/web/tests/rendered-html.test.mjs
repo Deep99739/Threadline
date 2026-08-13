@@ -58,6 +58,7 @@ test("server-renders the complete Threadline product surface", async () => {
   const html = await response.text();
   assert.match(html, /<title>Threadline: Evidence-bound engineering handoffs<\/title>/i);
   assert.match(html, /<meta property="og:image" content="http:\/(?:\/localhost(?::3000)?|\/127\.0\.0\.1:\d+)\/og.png"/i);
+  assert.match(html, /<link rel="icon" href="\/icon\.svg/);
   assert.match(html, /<meta name="twitter:card" content="summary_large_image"/i);
   assert.match(html, /Resume engineering work from evidence, not summaries/);
   assert.match(html, /Inspect the handoff/);

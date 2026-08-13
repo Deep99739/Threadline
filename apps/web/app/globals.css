@@ -87,36 +87,10 @@ a {
 }
 
 .wordmark-mark {
-  display: grid;
-  gap: 3px;
-  width: 18px;
-}
-
-.wordmark-mark i {
-  background: currentColor;
   display: block;
-  height: 2px;
-  position: relative;
-}
-
-.wordmark-mark i::after {
-  background: var(--canvas);
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  content: "";
-  height: 5px;
-  position: absolute;
-  right: 1px;
-  top: -2px;
-  width: 5px;
-}
-
-.wordmark-mark i:nth-child(2) {
-  width: 13px;
-}
-
-.wordmark-mark i:nth-child(3) {
-  width: 8px;
+  flex: 0 0 auto;
+  height: 20px;
+  width: 30px;
 }
 
 .site-header nav {

@@ -1,0 +1,33 @@
+<svg height="640" viewBox="0 0 1280 640" width="1280" xmlns="http://www.w3.org/2000/svg">
+  <rect fill="#F1EEE7" height="640" width="1280"/>
+  <g fill="none" stroke="#111311" stroke-width="1" opacity="0.42">
+    <path d="M0 32h18M32 0v18M1280 32h-18M1248 0v18M0 608h18M32 640v-18M1280 608h-18M1248 640v-18"/>
+  </g>
+
+  <g transform="translate(68 54)">
+    <g fill="none" stroke="#111311" stroke-linecap="square" stroke-linejoin="miter" stroke-width="6">
+      <path d="M3 24h18V10h15v10"/>
+      <path d="M36 28v10h15V24h18"/>
+    </g>
+    <rect fill="#793F31" height="11" width="11" x="31" y="19"/>
+  </g>
+  <text fill="#111311" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="28" font-weight="650" letter-spacing="-1" x="159" y="88">threadline</text>
+  <line stroke="#111311" stroke-width="1.5" x1="68" x2="1212" y1="119" y2="119"/>
+
+  <text fill="#793F31" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="650" letter-spacing="2" x="72" y="182">EVIDENCE-BOUND ENGINEERING CONTEXT</text>
+  <text fill="#111311" font-family="Georgia, Times New Roman, serif" font-size="70" letter-spacing="-2.7" x="68" y="286">Resume engineering work</text>
+  <text fill="#111311" font-family="Georgia, Times New Roman, serif" font-size="70" letter-spacing="-2.7" x="68" y="366">from evidence, not summaries.</text>
+
+  <g transform="translate(72 494)">
+    <line stroke="#111311" stroke-width="1.5" x1="8" x2="1132" y1="20" y2="20"/>
+    <circle cx="8" cy="20" fill="#F1EEE7" r="8" stroke="#111311" stroke-width="1.5"/>
+    <circle cx="8" cy="20" fill="#111311" r="3"/>
+    <circle cx="562" cy="20" fill="#F1EEE7" r="8" stroke="#111311" stroke-width="1.5"/>
+    <circle cx="562" cy="20" fill="#111311" r="3"/>
+    <rect fill="#F1EEE7" height="16" stroke="#111311" stroke-width="1.5" width="16" x="1124" y="12"/>
+    <rect fill="#793F31" height="6" width="6" x="1129" y="17"/>
+    <text fill="#60645E" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" letter-spacing="1.4" x="0" y="62">TASK</text>
+    <text fill="#60645E" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" letter-spacing="1.4" text-anchor="middle" x="562" y="62">CITED EVIDENCE</text>
+    <text fill="#60645E" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" letter-spacing="1.4" text-anchor="end" x="1140" y="62">EXACT COMMIT</text>
+  </g>
+</svg>

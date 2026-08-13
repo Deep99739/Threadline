@@ -1,6 +1,10 @@
-# Threadline
+<p align="center">
+  <img src="apps/web/public/threadline-mark.svg" alt="Threadline" width="120">
+</p>
 
-**Evidence-bound handoffs for coding agents.**
+<h1 align="center">Threadline</h1>
+
+<p align="center"><strong>Evidence-bound handoffs for coding agents.</strong></p>
 
 [![CI](https://github.com/Deep99739/Threadline/actions/workflows/ci.yml/badge.svg)](https://github.com/Deep99739/Threadline/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Deep99739/Threadline)](https://github.com/Deep99739/Threadline/releases/latest)

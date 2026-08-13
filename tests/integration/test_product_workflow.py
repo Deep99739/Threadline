@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -142,13 +144,22 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
     )
     git(root, "add", "parser.py")
     git(root, "commit", "-m", "Add parser")
+    coverage_probe = root / ".git" / "coverage-probe"
+    coverage_probe.write_text(
+        "#!/bin/sh\n"
+        'if [ -n "${COVERAGE_PROCESS_START:-}" ] || '
+        '[ -n "${COV_CORE_SOURCE:-}" ]; then exit 9; fi\n'
+        f'exec {sys.executable} "$@"\n',
+        encoding="utf-8",
+    )
+    coverage_probe.chmod(0o755)
 
     result = onboard_workspace(
         root,
         objective="Make parser continuation safe",
         next_action="Add whitespace integration coverage",
         client="codex",
-        python_executable=Path(sys.executable),
+        python_executable=coverage_probe,
     )
 
     assert result["ready"] is True
@@ -166,6 +177,10 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
     }
     assert (root / ".codex" / "config.toml").is_file()
     assert (root / ".git" / "threadline" / "threadline.db").is_file()
+    post_commit = root / ".git" / "hooks" / "post-commit"
+    assert "unset COVERAGE_PROCESS_START COVERAGE_FILE COV_CORE_SOURCE" in post_commit.read_text(
+        encoding="utf-8"
+    )
     assert git(root, "log", "-1", "--pretty=%s") == "Add Threadline context"
     assert git(root, "ls-files", "threadline.json") == "threadline.json"
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
@@ -176,7 +191,21 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
         encoding="utf-8",
     )
     git(root, "add", "parser.py")
-    git(root, "commit", "-m", "Normalize parser output")
+    command_environment = os.environ.copy()
+    command_environment.update(
+        {
+            "COVERAGE_PROCESS_START": "/tmp/coverage-config",
+            "COV_CORE_SOURCE": "threadline",
+        }
+    )
+    subprocess.run(
+        ["git", "-C", str(root), "commit", "-m", "Normalize parser output"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        env=command_environment,
+    )
 
     refreshed = inspect_workspace(root)
     assert refreshed["ready"] is True
@@ -187,7 +216,7 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
         objective="Make parser continuation safe",
         next_action="Add whitespace integration coverage",
         client="codex",
-        python_executable=Path(sys.executable),
+        python_executable=coverage_probe,
     )
 
     assert repeated["ready"] is True
@@ -231,9 +260,7 @@ def test_onboard_preserves_an_existing_git_hook_and_reports_manual_refresh(
     assert result["ready"] is True
     assert result["refresh_hooks"]["automatic_refresh"] is False
     assert result["refresh_hooks"]["blocked"] == ["post-commit"]
-    assert existing_hook.read_text(encoding="utf-8") == (
-        "#!/bin/sh\nprintf 'custom hook\\n'\n"
-    )
+    assert existing_hook.read_text(encoding="utf-8") == ("#!/bin/sh\nprintf 'custom hook\\n'\n")
 
 
 def test_onboard_refuses_existing_work_without_creating_product_files(tmp_path: Path) -> None:

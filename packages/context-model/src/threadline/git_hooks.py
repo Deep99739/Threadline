@@ -56,9 +56,11 @@ def _render_hook(root: Path, python_executable: Path, log_path: Path) -> str:
     return (
         "#!/bin/sh\n"
         f"{MANAGED_MARKER}\n"
+        "unset COVERAGE_PROCESS_START COVERAGE_FILE COV_CORE_SOURCE "
+        "COV_CORE_CONFIG COV_CORE_DATAFILE\n"
         f"output=$({command} 2>&1)\n"
         "status=$?\n"
-        "if [ \"$status\" -ne 0 ]; then\n"
+        'if [ "$status" -ne 0 ]; then\n'
         f"  printf '%s\\n' \"Threadline refresh failed: $output\" >> {quoted_log}\n"
         "fi\n"
         "exit 0\n"

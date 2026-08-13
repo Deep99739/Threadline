@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="apps/web/public/threadline-mark.svg" alt="Threadline" width="120">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/threadline-mark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="apps/web/public/threadline-mark.svg">
+    <img src="apps/web/public/threadline-mark.svg" alt="Threadline commit seam" width="120">
+  </picture>
 </p>
 
 <h1 align="center">Threadline</h1>

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from tests.helpers import git
@@ -14,6 +15,7 @@ from threadline.client_profiles import connect_client, disconnect_client
 from threadline.git_hooks import install_refresh_hooks, uninstall_refresh_hooks
 from threadline.manifest import ProjectManifest, initialize_manifest
 from threadline.product_workflow import (
+    advance_workspace,
     checkpoint_workspace,
     handoff_content,
     inspect_workspace,
@@ -99,6 +101,61 @@ def test_doctor_explains_missing_sync_then_confirms_current_handoff(
     )
     assert after["handoff"]["current"] is True
     assert after["next_command"] == f"threadline handoff {root}"
+
+
+def test_first_handoff_orients_the_successor_to_repository_structure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = _repository(tmp_path)
+    (root / "tests").mkdir()
+    (root / "tests" / "test_parser.py").write_text(
+        "from parser import parse\n\n\ndef test_parse() -> None:\n    assert parse(' x ') == 'x'\n",
+        encoding="utf-8",
+    )
+    _commit(root, "tests/test_parser.py", message="Add parser test")
+
+    content = sync_local_workspace(root).handoff.content
+    orientation = cast(dict[str, Any], content["repository_orientation"])
+
+    assert orientation["tracked_text_files"] == 3
+    assert orientation["parsed_code_files"] == 2
+    assert orientation["languages"] == {"python": 2}
+    assert orientation["test_files"] == ["tests/test_parser.py"]
+    assert any(item["path"] == "tests" for item in orientation["top_level_areas"])
+    rendered = render_handoff_markdown(content)
+    assert "## Repository orientation" in rendered
+    assert "tests/test_parser.py" in rendered
+
+
+def test_advance_combines_check_and_handoff_update_without_self_certifying(
+    tmp_path: Path,
+) -> None:
+    root = _repository(tmp_path)
+
+    result = advance_workspace(
+        root,
+        statement="The parser handles surrounding whitespace",
+        next_action="Add empty-input behavior",
+        command=(sys.executable, "-c", "raise SystemExit(0)"),
+        include_paths=("parser.py",),
+        scope="FOCUSED",
+    )
+    manifest = ProjectManifest.model_validate_json(
+        (root / "threadline.json").read_text(encoding="utf-8")
+    )
+
+    assert result["status"] == "PASSED"
+    assert result["statement_state"] == "ASSERTED"
+    assert manifest.task.next_action == "Add empty-input behavior"
+    assert manifest.observations[-1].statement == "The parser handles surrounding whitespace"
+    assert manifest.observations[-1].state.value == "ASSERTED"
+    assert result["paths_to_commit_together"] == [
+        "parser.py",
+        "threadline.json",
+        "threadline/test-report.json",
+    ]
 
 
 def test_connect_merges_one_project_client_without_overwriting_other_servers(

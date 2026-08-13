@@ -61,3 +61,32 @@ def test_human_entry_point_prints_concise_expected_error(
     error = capsys.readouterr().err
     assert error.startswith("Threadline:")
     assert "Traceback" not in error
+
+
+def test_advance_cli_records_check_and_next_action(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = _repository(tmp_path)
+
+    main(
+        [
+            "advance",
+            str(root),
+            "--statement",
+            "Service behavior was checked",
+            "--next-action",
+            "Add edge-case coverage",
+            "--include",
+            "service.py",
+            "--",
+            sys.executable,
+            "-c",
+            "raise SystemExit(0)",
+        ]
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["status"] == "PASSED"
+    assert payload["statement_state"] == "ASSERTED"
+    assert payload["next_action"] == "Add edge-case coverage"

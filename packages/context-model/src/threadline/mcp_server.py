@@ -220,6 +220,7 @@ def create_mcp_server(
         status = "partial" if content.get("unknowns") or content.get("contradictions") else "ok"
         data: dict[str, Any] = {
             "objective": content["objective"],
+            "repository_orientation": content["repository_orientation"],
             "constraints": content["constraints"],
             "verified_completed_work": content["verified_completed_work"],
             "next_action": content["next_action"],

@@ -20,6 +20,7 @@ from threadline.manifest import initialize_manifest
 from threadline.mcp_runtime import serve_demo_mcp, serve_workspace_mcp
 from threadline.migrations import upgrade_database
 from threadline.product_workflow import (
+    advance_workspace,
     checkpoint_workspace,
     handoff_content,
     inspect_workspace,
@@ -120,6 +121,17 @@ def _parser() -> argparse.ArgumentParser:
     checkpoint.add_argument("--next-action", required=True)
     checkpoint.add_argument("--actor", choices=("AGENT", "HUMAN"), default="AGENT")
 
+    advance = subparsers.add_parser(
+        "advance", help="run a check and record the next handoff in one operation"
+    )
+    advance.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
+    advance.add_argument("--statement", required=True)
+    advance.add_argument("--next-action", required=True)
+    advance.add_argument("--include", action="append", required=True)
+    advance.add_argument("--scope", choices=("FULL", "FOCUSED"), default="FOCUSED")
+    advance.add_argument("--timeout", type=int, default=300)
+    advance.add_argument("--actor", choices=("AGENT", "HUMAN"), default="AGENT")
+
     handoff = subparsers.add_parser(
         "handoff", help="print the exact current cited handoff for any terminal client"
     )
@@ -167,7 +179,7 @@ def _database_url(explicit: str | None) -> str:
 def main(arguments: Sequence[str] | None = None) -> None:
     raw_arguments = list(arguments) if arguments is not None else sys.argv[1:]
     check_command: tuple[str, ...] = ()
-    if raw_arguments[:1] == ["check"] and "--" in raw_arguments:
+    if raw_arguments[:1] in (["check"], ["advance"]) and "--" in raw_arguments:
         separator = raw_arguments.index("--")
         check_command = tuple(raw_arguments[separator + 1 :])
         raw_arguments = raw_arguments[:separator]
@@ -305,6 +317,23 @@ def main(arguments: Sequence[str] | None = None) -> None:
                     parsed.repository,
                     statement=parsed.statement,
                     next_action=parsed.next_action,
+                    actor=parsed.actor,
+                ),
+                indent=2,
+            )
+        )
+        return
+    if parsed.command == "advance":
+        print(
+            json.dumps(
+                advance_workspace(
+                    parsed.repository,
+                    statement=parsed.statement,
+                    next_action=parsed.next_action,
+                    command=check_command,
+                    include_paths=tuple(parsed.include),
+                    scope=parsed.scope,
+                    timeout_seconds=parsed.timeout,
                     actor=parsed.actor,
                 ),
                 indent=2,

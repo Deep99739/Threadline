@@ -166,23 +166,21 @@ threadline uninstall .
 
 ## Everyday workflow
 
-Record an observation and the next action:
+Run a check and record the next handoff in one operation:
 
 ```bash
-threadline checkpoint . \
+threadline advance . \
   --statement "The parser change is implemented; integration coverage is missing" \
-  --next-action "Add and run the whitespace integration test"
-```
-
-Run a check and bind its result to the files it covers:
-
-```bash
-threadline check . \
+  --next-action "Add and run the whitespace integration test" \
   --scope FULL \
   --include src/parser.py \
   --include tests/test_parser.py \
   -- python -m pytest -q
 ```
+
+`advance` keeps the statement asserted, records the command result and exact tested content hashes,
+and updates the next action. It never commits product code on your behalf. The lower-level
+`checkpoint` and `check` commands remain available when those actions need to happen separately.
 
 Commit the work and generated evidence, then read the automatically refreshed handoff:
 

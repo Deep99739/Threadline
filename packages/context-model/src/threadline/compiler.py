@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from uuid import UUID, uuid5
 
 from threadline.models import (
@@ -92,6 +94,86 @@ def _next_action(snapshot: ContextSnapshot) -> str:
     if tests_incomplete:
         return "Run the complete test suite before making a completion claim."
     return "Review the remaining unknown claims and collect their required evidence."
+
+
+def _repository_orientation(snapshot: ContextSnapshot) -> dict[str, object]:
+    """Summarize structure from committed evidence without guessing project behavior."""
+
+    paths = sorted(
+        {
+            locator.uri.rsplit("/", 1)[-1]
+            if "/" not in locator.uri.removeprefix("repo://").partition("/")[2]
+            else locator.uri.removeprefix("repo://").partition("/")[2]
+            for evidence in snapshot.evidence
+            for locator in (evidence.locator,)
+            if locator.uri.startswith("repo://")
+        }
+    )
+    code_paths = {item.path for item in snapshot.code_symbols}
+    language_by_path = {item.path: item.language for item in snapshot.code_symbols}
+    languages = Counter(language_by_path.values())
+    areas = Counter(
+        PurePosixPath(path).parts[0] if len(PurePosixPath(path).parts) > 1 else "repository root"
+        for path in paths
+    )
+    dependency_weight = Counter[str]()
+    for dependency in snapshot.code_dependencies:
+        dependency_weight[dependency.source_symbol_key] += 1
+        if dependency.target_symbol_key is not None:
+            dependency_weight[dependency.target_symbol_key] += 1
+    symbols = sorted(
+        (
+            item
+            for item in snapshot.code_symbols
+            if item.symbol_kind.value != "MODULE"
+        ),
+        key=lambda item: (
+            -dependency_weight[item.logical_key],
+            item.path,
+            item.line_start,
+            item.qualified_name,
+        ),
+    )[:8]
+    entry_names = {
+        "__main__.py",
+        "app.py",
+        "cli.py",
+        "index.js",
+        "index.ts",
+        "main.go",
+        "main.py",
+        "server.js",
+        "server.py",
+        "server.ts",
+    }
+    return {
+        "tracked_text_files": len(paths),
+        "parsed_code_files": len(code_paths),
+        "languages": dict(sorted(languages.items())),
+        "top_level_areas": [
+            {"path": area, "files": count}
+            for area, count in sorted(areas.items(), key=lambda item: (-item[1], item[0]))[:8]
+        ],
+        "likely_entry_points": [
+            path for path in paths if PurePosixPath(path).name in entry_names
+        ][:8],
+        "high_signal_symbols": [
+            {
+                "name": item.qualified_name,
+                "kind": item.symbol_kind.value,
+                "path": item.path,
+                "line": item.line_start,
+                "relationship_count": dependency_weight[item.logical_key],
+            }
+            for item in symbols
+        ],
+        "test_files": [
+            path
+            for path in paths
+            if "test" in PurePosixPath(path).name.lower()
+            or "tests" in PurePosixPath(path).parts
+        ][:12],
+    }
 
 
 def compile_handoff(
@@ -189,6 +271,7 @@ def compile_handoff(
     )
     content: dict[str, object] = {
         "repository_version": snapshot.repository_version.model_dump(mode="json"),
+        "repository_orientation": _repository_orientation(snapshot),
         "objective": snapshot.task.objective,
         "query": query,
         "constraints": [item.statement for item in snapshot.constraints],

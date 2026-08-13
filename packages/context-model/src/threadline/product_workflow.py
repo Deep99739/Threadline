@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from threadline.client_profiles import connect_client, disconnect_client
 from threadline.client_verification import verify_client_connection
+from threadline.command_evidence import run_and_record_check
 from threadline.git_hooks import install_refresh_hooks, uninstall_refresh_hooks
 from threadline.git_repository import (
     commit_exact_paths,
@@ -317,6 +318,69 @@ def checkpoint_workspace(
     }
 
 
+def advance_workspace(
+    repository_path: Path,
+    *,
+    statement: str,
+    next_action: str,
+    command: tuple[str, ...],
+    include_paths: tuple[str, ...],
+    scope: str,
+    timeout_seconds: int = 300,
+    actor: str = "AGENT",
+) -> dict[str, Any]:
+    """Run one check and record the asserted handoff update in one reviewable operation."""
+
+    root, current = read_worktree_manifest(repository_path)
+    live = read_git_working_state(root, current.repository_id)
+    if "threadline.json" in live.dirty_paths:
+        raise ValueError(
+            "threadline.json already has uncommitted changes; review, commit, or revert "
+            "them before advancing the task"
+        )
+    check = run_and_record_check(
+        root,
+        command=command,
+        include_paths=include_paths,
+        scope=scope,
+        timeout_seconds=timeout_seconds,
+    )
+    _updated_root, checked_manifest = read_worktree_manifest(root)
+    payload = checked_manifest.model_dump(mode="json")
+    payload["task"]["next_action"] = next_action
+    payload["task"]["query"] = f"{checked_manifest.task.objective} {next_action}"
+    payload["observations"].append(
+        {
+            "actor_type": actor,
+            "statement": statement,
+            "state": "ASSERTED",
+            "source_path": "threadline.json",
+        }
+    )
+    updated = ProjectManifest.model_validate(payload)
+    (root / "threadline.json").write_text(
+        json.dumps(updated.model_dump(mode="json"), indent=2) + "\n",
+        encoding="utf-8",
+    )
+    paths = list(
+        dict.fromkeys(
+            [*live.dirty_paths, *check["paths_to_commit_together"]]
+        )
+    )
+    return {
+        "status": check["status"],
+        "exit_code": check["exit_code"],
+        "duration_ms": check["duration_ms"],
+        "statement_state": "ASSERTED",
+        "statement": statement,
+        "next_action": next_action,
+        "report": check["report"],
+        "raw_output_persisted": False,
+        "paths_to_commit_together": paths,
+        "next": "Review these paths and commit them together: " + ", ".join(paths),
+    }
+
+
 def handoff_content(repository_path: Path, *, database_url: str | None = None) -> dict[str, Any]:
     """Return an already-compiled exact-commit handoff without mutating stored context."""
 
@@ -371,6 +435,42 @@ def render_handoff_markdown(content: dict[str, Any]) -> str:
         "",
         str(content.get("next_action", "")),
     ]
+    orientation = content.get("repository_orientation", {})
+    if isinstance(orientation, dict):
+        lines.extend(["", "## Repository orientation", ""])
+        languages = orientation.get("languages", {})
+        areas = orientation.get("top_level_areas", [])
+        entry_points = orientation.get("likely_entry_points", [])
+        symbols = orientation.get("high_signal_symbols", [])
+        lines.append(
+            f"- {orientation.get('tracked_text_files', 0)} tracked text files; "
+            f"{orientation.get('parsed_code_files', 0)} parsed code files"
+        )
+        if isinstance(languages, dict) and languages:
+            lines.append(
+                "- Languages: "
+                + ", ".join(f"{name} ({count})" for name, count in languages.items())
+            )
+        if isinstance(areas, list) and areas:
+            lines.append(
+                "- Main areas: "
+                + ", ".join(
+                    f"{item.get('path')} ({item.get('files')})"
+                    for item in areas
+                    if isinstance(item, dict)
+                )
+            )
+        if isinstance(entry_points, list) and entry_points:
+            lines.append("- Likely entry points: " + ", ".join(map(str, entry_points)))
+        if isinstance(symbols, list) and symbols:
+            lines.append(
+                "- High-signal symbols: "
+                + ", ".join(
+                    f"{item.get('name')} ({item.get('path')}:{item.get('line')})"
+                    for item in symbols[:5]
+                    if isinstance(item, dict)
+                )
+            )
     for title, key in (
         ("Constraints", "constraints"),
         ("Verified completed work", "verified_completed_work"),

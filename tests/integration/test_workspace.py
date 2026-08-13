@@ -372,5 +372,6 @@ async def test_real_stdio_workspace_server_exposes_committed_task(
     assert result.is_error is False
     assert result.structured_content["status"] == "ok"
     assert result.structured_content["data"]["objective"].startswith("Make parser")
+    assert result.structured_content["data"]["repository_orientation"]["tracked_text_files"]
     assert result.structured_content["citations"][0]["locator"]["uri"].endswith("/threadline.json")
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""

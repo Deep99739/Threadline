@@ -48,6 +48,35 @@ def _run(
     return result.stdout.strip()
 
 
+def _run_json_status(command: list[str], *, cwd: Path) -> dict[str, Any]:
+    """Read a JSON status command whose non-ready state uses exit code one."""
+
+    result = subprocess.run(
+        command,
+        cwd=cwd,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=_environment(),
+    )
+    if result.returncode not in {0, 1}:
+        raise RuntimeError(
+            f"Clean-clone status command failed ({' '.join(command)}):\n"
+            f"{result.stdout}{result.stderr}"
+        )
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            f"Clean-clone status command returned invalid JSON ({' '.join(command)}):\n"
+            f"{result.stdout}{result.stderr}"
+        ) from error
+    if not isinstance(payload, dict):
+        raise RuntimeError("Clean-clone status command did not return a JSON object")
+    return payload
+
+
 def _git(repository: Path, *arguments: str) -> str:
     return _run(["git", "-C", str(repository), *arguments], cwd=repository)
 
@@ -253,13 +282,13 @@ def _verify_clean_clone() -> None:
         )
         synchronized = {"commit": _git(repository, "rev-parse", "HEAD")}
         refresh_deadline = time.monotonic() + 15
-        refreshed = json.loads(
-            _run([str(threadline), "doctor", str(repository)], cwd=checkout)
+        refreshed = _run_json_status(
+            [str(threadline), "doctor", str(repository)], cwd=checkout
         )
         while not refreshed["ready"] and time.monotonic() < refresh_deadline:
             time.sleep(0.1)
-            refreshed = json.loads(
-                _run([str(threadline), "doctor", str(repository)], cwd=checkout)
+            refreshed = _run_json_status(
+                [str(threadline), "doctor", str(repository)], cwd=checkout
             )
         if not refreshed["ready"]:
             raise RuntimeError(

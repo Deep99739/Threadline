@@ -280,3 +280,7 @@ tests/                    unit, property, contract, and integration tests
 6. Humans own canonical and irreversible decisions.
 7. Every architecture layer must earn its complexity through evaluation.
 8. Public claims must remain reproducible.
+
+## License
+
+Threadline is open source under the [Apache License 2.0](./LICENSE).

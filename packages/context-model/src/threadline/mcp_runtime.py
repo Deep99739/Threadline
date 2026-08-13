@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from threadline.demo import (
     DEMO_ACTOR_ID,
     DEMO_REPOSITORY_ID,
@@ -44,11 +46,16 @@ def serve_workspace_mcp(repository_path: Path, database_url: str | None = None) 
     resolved_database_url = workspace_database_url(workspace, database_url)
     store = ThreadlineStore(resolved_database_url)
     try:
-        handoff = store.load_latest_handoff(
-            tenant_id=workspace.scope.tenant_id,
-            workspace_id=workspace.scope.workspace_id,
-            task_id=workspace.manifest.task.id,
-        )
+        try:
+            handoff = store.load_latest_handoff(
+                tenant_id=workspace.scope.tenant_id,
+                workspace_id=workspace.scope.workspace_id,
+                task_id=workspace.manifest.task.id,
+            )
+        except (LookupError, SQLAlchemyError) as error:
+            raise LookupError(
+                "no compiled handoff exists; run threadline sync first"
+            ) from error
         version = handoff.get("repository_version", {})
         if not isinstance(version, dict) or (
             version.get("branch") != workspace.git_snapshot.repository_version.branch

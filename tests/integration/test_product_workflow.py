@@ -393,6 +393,43 @@ def test_uninstall_removes_only_rebuildable_state_and_keeps_portable_contract(
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
 
+def test_onboard_rebuilds_state_after_local_uninstall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = _repository(tmp_path)
+    sync_local_workspace(root)
+    uninstall_workspace(root)
+
+    result = onboard_workspace(
+        root,
+        objective="Make parser continuation evidence available",
+        next_action="Add an integration test for whitespace-only input",
+        client="antigravity",
+        python_executable=Path(sys.executable),
+    )
+
+    assert result["ready"] is True
+    assert result["commit_created"] is None
+    assert result["client_connection"]["verified"] is True
+    assert (root / ".git" / "threadline" / "threadline.db").is_file()
+
+
+def test_handoff_converts_empty_local_database_into_sync_guidance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root = _repository(tmp_path)
+    database = root / ".git" / "threadline" / "threadline.db"
+    database.parent.mkdir(parents=True)
+    database.touch()
+
+    with pytest.raises(LookupError, match="run threadline sync first"):
+        handoff_content(root)
+
+
 def test_uninstall_contract_removal_requires_clean_tree_and_leaves_reviewable_delete(
     tmp_path: Path,
 ) -> None:

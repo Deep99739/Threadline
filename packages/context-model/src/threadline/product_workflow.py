@@ -400,11 +400,16 @@ def handoff_content(repository_path: Path, *, database_url: str | None = None) -
         raise LookupError("no compiled handoff exists; run threadline sync first")
     store = ThreadlineStore(resolved_database_url)
     try:
-        content = store.load_latest_handoff(
-            tenant_id=workspace.scope.tenant_id,
-            workspace_id=workspace.scope.workspace_id,
-            task_id=workspace.manifest.task.id,
-        )
+        try:
+            content = store.load_latest_handoff(
+                tenant_id=workspace.scope.tenant_id,
+                workspace_id=workspace.scope.workspace_id,
+                task_id=workspace.manifest.task.id,
+            )
+        except (LookupError, SQLAlchemyError) as error:
+            raise LookupError(
+                "no compiled handoff exists; run threadline sync first"
+            ) from error
     finally:
         store.close()
     version = content.get("repository_version", {})

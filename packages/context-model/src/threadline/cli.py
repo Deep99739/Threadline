@@ -185,10 +185,14 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
         return
     if parsed.command == "sync":
+        def sync_progress(message: str) -> None:
+            print(f"Threadline: {message}", file=sys.stderr, flush=True)
+
         synced = sync_local_workspace(
             parsed.repository,
             database_url=parsed.database_url,
             query=parsed.query,
+            progress=sync_progress,
         )
         print(
             json.dumps(

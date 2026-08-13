@@ -190,6 +190,7 @@ def compile_handoff(
     content: dict[str, object] = {
         "repository_version": snapshot.repository_version.model_dump(mode="json"),
         "objective": snapshot.task.objective,
+        "query": query,
         "constraints": [item.statement for item in snapshot.constraints],
         "rejected_approaches": [
             rejected

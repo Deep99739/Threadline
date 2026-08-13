@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid5
@@ -10,7 +11,14 @@ from uuid import UUID, uuid5
 from sqlalchemy.engine import make_url
 
 from threadline.compiler import CompiledHandoff
-from threadline.git_repository import GitSnapshot, read_git_snapshot, threadline_git_state_path
+from threadline.git_repository import (
+    GitRepositoryError,
+    GitSnapshot,
+    read_git_file,
+    read_git_working_state,
+    threadline_git_cache_path,
+    threadline_git_state_path,
+)
 from threadline.manifest import (
     ProjectManifest,
     manifest_from_git_snapshot,
@@ -50,7 +58,23 @@ def _scope(manifest: ProjectManifest) -> ServiceScope:
 
 def load_local_workspace(repository_path: Path) -> LocalWorkspace:
     root, worktree_manifest = read_worktree_manifest(repository_path)
-    snapshot = read_git_snapshot(root, worktree_manifest.repository_id)
+    working = read_git_working_state(root, worktree_manifest.repository_id)
+    try:
+        manifest_file = read_git_file(
+            root,
+            commit_sha=working.repository_version.commit_sha,
+            relative_path="threadline.json",
+        )
+    except GitRepositoryError as error:
+        raise ValueError(
+            f"threadline.json is not committed at {working.repository_version.commit_sha}"
+        ) from error
+    snapshot = GitSnapshot(
+        root=root,
+        name=root.name,
+        repository_version=working.repository_version,
+        files=(manifest_file,),
+    )
     committed_manifest = manifest_from_git_snapshot(snapshot)
     if committed_manifest != worktree_manifest:
         raise ValueError(
@@ -79,6 +103,7 @@ def sync_local_workspace(
     *,
     database_url: str | None = None,
     query: str | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> WorkspaceSyncResult:
     workspace = load_local_workspace(repository_path)
     resolved_database_url = workspace_database_url(workspace, database_url)
@@ -90,12 +115,45 @@ def sync_local_workspace(
     store = ThreadlineStore(resolved_database_url)
     try:
         service = ThreadlineService(store)
-        service.ingest(repository_path=workspace.repository_path, scope=workspace.scope)
+        requested_query = query or workspace.manifest.task.query
+        if query is None:
+            try:
+                existing = store.load_latest_compiled_handoff(
+                    tenant_id=workspace.scope.tenant_id,
+                    workspace_id=workspace.scope.workspace_id,
+                    task_id=workspace.manifest.task.id,
+                )
+            except LookupError:
+                existing = None
+            if (
+                existing is not None
+                and existing.context_pack.repository_version
+                == workspace.git_snapshot.repository_version
+                and existing.content.get("query") == requested_query
+            ):
+                return WorkspaceSyncResult(
+                    workspace=workspace,
+                    database_url=resolved_database_url,
+                    handoff=existing,
+                )
+        service.ingest(
+            repository_path=workspace.repository_path,
+            scope=workspace.scope,
+            code_cache_path=threadline_git_cache_path(workspace.repository_path),
+            replace_current_snapshot=resolved_database_url.startswith("sqlite"),
+            progress=progress,
+        )
         handoff = service.compile_task_handoff(
             scope=workspace.scope,
             task_id=workspace.manifest.task.id,
-            query=query or workspace.manifest.task.query,
+            query=requested_query,
         )
+        if resolved_database_url.startswith("sqlite"):
+            store.prune_task_history(
+                tenant_id=workspace.scope.tenant_id,
+                workspace_id=workspace.scope.workspace_id,
+                task_id=workspace.manifest.task.id,
+            )
         return WorkspaceSyncResult(
             workspace=workspace,
             database_url=resolved_database_url,

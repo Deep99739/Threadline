@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -28,6 +29,9 @@ class ThreadlineService:
         *,
         repository_path: Path,
         scope: ServiceScope,
+        code_cache_path: Path | None = None,
+        replace_current_snapshot: bool = False,
+        progress: Callable[[str], None] | None = None,
     ) -> IngestionResult:
         return ingest_local_repository(
             self.store,
@@ -36,6 +40,9 @@ class ThreadlineService:
             workspace_id=scope.workspace_id,
             actor_id=scope.actor_id,
             repository_id=scope.repository_id,
+            code_cache_path=code_cache_path,
+            replace_current_snapshot=replace_current_snapshot,
+            progress=progress,
         )
 
     def compile_task_handoff(

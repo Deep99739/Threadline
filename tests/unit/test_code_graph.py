@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -202,3 +204,136 @@ def test_native_parser_failure_becomes_an_explicit_empty_diagnostic(
     assert result.diagnostics[0].status is ParseStatus.FAILED
     assert not result.symbols
     assert not result.dependencies
+
+
+def test_content_hash_cache_reuses_unchanged_files_and_rebinds_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _file("service.py", "def run():\n    return 1\n")
+    cache_path = tmp_path / "code-cache.json"
+    version = repository_version()
+    evidence = {
+        source.path: evidence_from_git_file(
+            source,
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            repository_version=version,
+        )
+    }
+    first = extract_code_graph(
+        (source,),
+        evidence,
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        actor_id=ACTOR,
+        task_id=TASK_ID,
+        repository_version=version,
+        isolate_native=False,
+        cache_path=cache_path,
+    )
+
+    def reject_parse(*_args: object) -> object:
+        raise AssertionError("unchanged source must not be parsed again")
+
+    monkeypatch.setattr(code_graph, "_parse_file", reject_parse)
+    second_evidence = evidence[source.path].model_copy(
+        update={"id": UUID("30000000-0000-4000-8000-000000000101")}
+    )
+    second = extract_code_graph(
+        (source,),
+        {source.path: second_evidence},
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        actor_id=ACTOR,
+        task_id=TASK_ID,
+        repository_version=version,
+        isolate_native=False,
+        cache_path=cache_path,
+    )
+
+    assert cache_path.is_file()
+    assert len(json.loads(cache_path.read_text())["entries"]) == 1
+    assert second.symbols[0].evidence_id == second_evidence.id
+    assert second.diagnostics[0].evidence_id == second_evidence.id
+    assert [item.logical_key for item in second.symbols] == [
+        item.logical_key for item in first.symbols
+    ]
+
+
+def test_malformed_incremental_cache_is_ignored_and_rebuilt(tmp_path: Path) -> None:
+    source = _file("service.py", "def run():\n    return 1\n")
+    cache_path = tmp_path / "code-cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "entries": {
+                    f"python:{source.path}:{source.content_hash}": {
+                        "symbols": [{"line_start": False}],
+                        "dependencies": [],
+                        "status": "COMPLETE",
+                        "error_lines": [],
+                    }
+                },
+            }
+        )
+    )
+
+    result = _extract(source)
+    evidence = {
+        source.path: evidence_from_git_file(
+            source,
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            repository_version=repository_version(),
+        )
+    }
+    cached = extract_code_graph(
+        (source,),
+        evidence,
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        actor_id=ACTOR,
+        task_id=TASK_ID,
+        repository_version=repository_version(),
+        isolate_native=False,
+        cache_path=cache_path,
+    )
+
+    assert [item.logical_key for item in cached.symbols] == [
+        item.logical_key for item in result.symbols
+    ]
+
+
+def test_corrupt_incremental_cache_is_rebuilt(tmp_path: Path) -> None:
+    source = _file("service.py", "def run():\n    return 1\n")
+    cache_path = tmp_path / "code-cache.json"
+    cache_path.write_text("not-json", encoding="utf-8")
+    version = repository_version()
+    evidence = {
+        source.path: evidence_from_git_file(
+            source,
+            tenant_id=TENANT,
+            workspace_id=WORKSPACE,
+            actor_id=ACTOR,
+            repository_version=version,
+        )
+    }
+
+    result = extract_code_graph(
+        (source,),
+        evidence,
+        tenant_id=TENANT,
+        workspace_id=WORKSPACE,
+        actor_id=ACTOR,
+        task_id=TASK_ID,
+        repository_version=version,
+        isolate_native=False,
+        cache_path=cache_path,
+    )
+
+    assert result.diagnostics[0].status is ParseStatus.COMPLETE
+    assert json.loads(cache_path.read_text())["schema_version"] == 1

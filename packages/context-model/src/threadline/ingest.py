@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid5
@@ -156,6 +157,9 @@ def ingest_local_repository(
     workspace_id: UUID,
     actor_id: UUID,
     repository_id: UUID,
+    code_cache_path: Path | None = None,
+    replace_current_snapshot: bool = False,
+    progress: Callable[[str], None] | None = None,
 ) -> IngestionResult:
     git_snapshot = read_git_snapshot(path, repository_id)
     manifest: ProjectManifest = manifest_from_git_snapshot(git_snapshot)
@@ -370,6 +374,8 @@ def ingest_local_repository(
         actor_id=actor_id,
         task_id=task.id,
         repository_version=git_snapshot.repository_version,
+        cache_path=code_cache_path,
+        progress=progress,
     )
 
     edges: list[ContextEdge] = []
@@ -512,5 +518,6 @@ def ingest_local_repository(
         evidence_content={
             evidence_by_path[path].id: safe_content_by_path[path].content for path in file_by_path
         },
+        replace_current=replace_current_snapshot,
     )
     return IngestionResult(snapshot=snapshot, git_snapshot=git_snapshot)

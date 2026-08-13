@@ -91,6 +91,13 @@ def threadline_git_state_path(path: Path) -> Path:
     return (root / git_path).resolve()
 
 
+def threadline_git_cache_path(path: Path) -> Path:
+    """Return the repository-private content cache used by incremental indexing."""
+
+    state_path = threadline_git_state_path(path)
+    return state_path.with_name("code-graph-cache-v1.json")
+
+
 def exclude_local_worktree_path(path: Path, relative_path: str) -> bool:
     """Keep a machine-specific generated file out of Git without editing .gitignore."""
 
@@ -206,32 +213,62 @@ def read_git_snapshot(path: Path, repository_id: UUID) -> GitSnapshot:
     if not branch:
         raise GitRepositoryError("detached HEAD is not accepted for a continuation task")
     commit_sha = _git(root, "rev-parse", "HEAD")
-    tracked_files = _git(root, "ls-tree", "-r", "--name-only", "HEAD").splitlines()
+    tree = _git(root, "ls-tree", "-r", "-z", "HEAD", strip=False)
+    blobs: list[tuple[str, str]] = []
+    for record in tree.split("\0"):
+        if not record or "\t" not in record:
+            continue
+        metadata, relative_path = record.split("\t", 1)
+        parts = metadata.split()
+        if len(parts) != 3 or parts[1] != "blob":
+            continue
+        if Path(relative_path).suffix.lower() in ALLOWED_SUFFIXES:
+            blobs.append((parts[2], relative_path))
 
+    process = subprocess.Popen(
+        ["git", "-C", str(root), "cat-file", "--batch"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if process.stdin is None or process.stdout is None:
+        process.kill()
+        process.wait()
+        raise GitRepositoryError("could not open Git's batch object reader")
     files: list[GitFile] = []
-    for relative_path in tracked_files:
-        if Path(relative_path).suffix.lower() not in ALLOWED_SUFFIXES:
-            continue
-        raw = subprocess.run(
-            ["git", "-C", str(root), "show", f"HEAD:{relative_path}"],
-            check=False,
-            capture_output=True,
-            timeout=15,
-        )
-        if raw.returncode != 0 or len(raw.stdout) > MAX_TEXT_BYTES:
-            continue
-        try:
-            content = raw.stdout.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        digest = hashlib.sha256(raw.stdout).hexdigest()
-        files.append(
-            GitFile(
-                path=relative_path,
-                content=content,
-                content_hash=f"sha256:{digest}",
+    try:
+        for object_id, relative_path in blobs:
+            process.stdin.write(f"{object_id}\n".encode())
+            process.stdin.flush()
+            header = process.stdout.readline().decode("utf-8", errors="replace").strip()
+            header_parts = header.split()
+            if len(header_parts) != 3 or header_parts[1] != "blob":
+                raise GitRepositoryError(f"Git could not read committed file: {relative_path}")
+            size = int(header_parts[2])
+            raw = process.stdout.read(size)
+            process.stdout.read(1)
+            if size > MAX_TEXT_BYTES:
+                continue
+            try:
+                content = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                continue
+            files.append(
+                GitFile(
+                    path=relative_path,
+                    content=content,
+                    content_hash=f"sha256:{hashlib.sha256(raw).hexdigest()}",
+                )
             )
-        )
+    finally:
+        process.stdin.close()
+        process.stdout.close()
+        stderr = process.stderr.read() if process.stderr is not None else b""
+        if process.stderr is not None:
+            process.stderr.close()
+        return_code = process.wait(timeout=15)
+    if return_code != 0:
+        raise GitRepositoryError(stderr.decode("utf-8", errors="replace").strip())
 
     return GitSnapshot(
         root=root,
@@ -242,6 +279,34 @@ def read_git_snapshot(path: Path, repository_id: UUID) -> GitSnapshot:
             commit_sha=commit_sha,
         ),
         files=tuple(files),
+    )
+
+
+def read_git_file(path: Path, *, commit_sha: str, relative_path: str) -> GitFile:
+    """Read one committed text file without scanning the full repository."""
+
+    root = resolve_git_root(path)
+    raw = subprocess.run(
+        ["git", "-C", str(root), "show", f"{commit_sha}:{relative_path}"],
+        check=False,
+        capture_output=True,
+        timeout=15,
+    )
+    if raw.returncode != 0:
+        raise GitRepositoryError(
+            raw.stderr.decode("utf-8", errors="replace").strip()
+            or f"committed file was not found: {relative_path}"
+        )
+    if len(raw.stdout) > MAX_TEXT_BYTES:
+        raise GitRepositoryError(f"committed file is too large: {relative_path}")
+    try:
+        content = raw.stdout.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise GitRepositoryError(f"committed file is not UTF-8: {relative_path}") from exc
+    return GitFile(
+        path=relative_path,
+        content=content,
+        content_hash=f"sha256:{hashlib.sha256(raw.stdout).hexdigest()}",
     )
 
 

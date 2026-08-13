@@ -5,6 +5,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -198,6 +199,7 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
             "COV_CORE_SOURCE": "threadline",
         }
     )
+    started = time.perf_counter()
     subprocess.run(
         ["git", "-C", str(root), "commit", "-m", "Normalize parser output"],
         check=True,
@@ -206,8 +208,13 @@ def test_onboard_creates_one_context_commit_and_returns_a_ready_clean_project(
         timeout=15,
         env=command_environment,
     )
+    assert time.perf_counter() - started < 1.0
 
+    deadline = time.monotonic() + 15
     refreshed = inspect_workspace(root)
+    while not refreshed["ready"] and time.monotonic() < deadline:
+        time.sleep(0.1)
+        refreshed = inspect_workspace(root)
     assert refreshed["ready"] is True
     assert refreshed["repository"]["commit"] == git(root, "rev-parse", "HEAD")
 

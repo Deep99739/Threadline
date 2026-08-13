@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from tests.helpers import PROJECT_ROOT, git
 from threadline.cli import main
 from threadline.client_profiles import OFFICIAL_DOCUMENTATION, build_client_profiles
 from threadline.manifest import initialize_manifest
+from threadline.storage import ThreadlineStore
 from threadline.workspace import (
     load_local_workspace,
     sync_local_workspace,
@@ -107,7 +109,9 @@ def test_workspace_requires_committed_configuration_and_syncs_exact_head(
     first_counts = stored_counts()
     first_content = synced.handoff.content
     for _ in range(3):
+        started = time.perf_counter()
         repeated = sync_local_workspace(root)
+        assert time.perf_counter() - started < 1.0
         assert repeated.handoff.content == first_content
         assert stored_counts() == first_counts
 
@@ -115,6 +119,74 @@ def test_workspace_requires_committed_configuration_and_syncs_exact_head(
     manifest_path.write_text(manifest_path.read_text().replace("IN_PROGRESS", "PAUSED"))
     with pytest.raises(ValueError, match="uncommitted changes"):
         load_local_workspace(root)
+
+
+def test_changed_commit_reuses_unchanged_parses_and_replaces_heavy_local_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("THREADLINE_DATABASE_URL", raising=False)
+    root, _task_id = _initialized_repository(tmp_path)
+    (root / "second.py").write_text("def second() -> int:\n    return 2\n")
+    git(root, "add", "second.py")
+    git(
+        root,
+        "-c",
+        "user.name=Repository Owner",
+        "-c",
+        "user.email=owner@example.invalid",
+        "commit",
+        "-m",
+        "Add second module",
+    )
+    _commit_manifest(root)
+    first = sync_local_workspace(root)
+    database_path = root / ".git" / "threadline" / "threadline.db"
+    first_size = database_path.stat().st_size
+
+    (root / "parser.py").write_text(
+        "def parse(value: str) -> str:\n    return value.strip().lower()\n"
+    )
+    git(root, "add", "parser.py")
+    git(
+        root,
+        "-c",
+        "user.name=Repository Owner",
+        "-c",
+        "user.email=owner@example.invalid",
+        "commit",
+        "-m",
+        "Normalize parser",
+    )
+    progress: list[str] = []
+    second = sync_local_workspace(root, progress=progress.append)
+
+    assert first.handoff.context_pack.repository_version != (
+        second.handoff.context_pack.repository_version
+    )
+    assert any("1 parsed, 1 reused" in item for item in progress)
+    assert database_path.stat().st_size <= first_size * 1.25
+    connection = sqlite3.connect(database_path)
+    try:
+        current_commits = connection.execute(
+            "SELECT DISTINCT commit_sha FROM context_entities "
+            "WHERE entity_type != 'context_version'"
+        ).fetchall()
+    finally:
+        connection.close()
+    assert current_commits == [(git(root, "rev-parse", "HEAD"),)]
+
+    store = ThreadlineStore(f"sqlite+pysqlite:///{database_path}")
+    try:
+        with pytest.raises(ValueError, match="at least one"):
+            store.prune_task_history(
+                tenant_id=second.workspace.scope.tenant_id,
+                workspace_id=second.workspace.scope.workspace_id,
+                task_id=second.workspace.manifest.task.id,
+                retain=0,
+            )
+    finally:
+        store.close()
 
 
 def test_cli_init_and_sync_return_machine_readable_state(

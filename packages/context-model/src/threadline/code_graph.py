@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import lru_cache
 from multiprocessing import get_context
@@ -517,6 +518,95 @@ def _merge_logical_symbols(symbols: list[_ParsedSymbol]) -> list[_ParsedSymbol]:
     return list(merged.values())
 
 
+def _cached_parse(
+    payload: object,
+    *,
+    evidence_id: UUID,
+) -> tuple[list[_ParsedSymbol], list[_ParsedDependency], ParseStatus, tuple[int, ...]] | None:
+    if not isinstance(payload, dict):
+        return None
+
+    def integer(value: object) -> int:
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise ValueError("cached integer is malformed")
+        return int(value)
+
+    try:
+        symbols = [
+            _ParsedSymbol(
+                logical_key=str(item["logical_key"]),
+                language=str(item["language"]),
+                path=str(item["path"]),
+                qualified_name=str(item["qualified_name"]),
+                symbol_kind=SymbolKind(str(item["symbol_kind"])),
+                line_start=integer(item["line_start"]),
+                line_end=integer(item["line_end"]),
+                evidence_id=evidence_id,
+            )
+            for item in cast(list[dict[str, object]], payload["symbols"])
+        ]
+        dependencies = [
+            _ParsedDependency(
+                source_symbol_key=str(item["source_symbol_key"]),
+                target_name=str(item["target_name"]),
+                dependency_kind=DependencyKind(str(item["dependency_kind"])),
+                path=str(item["path"]),
+                line_start=integer(item["line_start"]),
+                line_end=integer(item["line_end"]),
+                evidence_id=evidence_id,
+                ordinal=integer(item["ordinal"]),
+            )
+            for item in cast(list[dict[str, object]], payload["dependencies"])
+        ]
+        return (
+            symbols,
+            dependencies,
+            ParseStatus(str(payload["status"])),
+            tuple(integer(item) for item in cast(list[object], payload["error_lines"])),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _cache_payload(
+    parsed: tuple[
+        list[_ParsedSymbol],
+        list[_ParsedDependency],
+        ParseStatus,
+        tuple[int, ...],
+    ],
+) -> dict[str, object]:
+    symbols, dependencies, status, error_lines = parsed
+    return {
+        "symbols": [
+            {
+                "logical_key": item.logical_key,
+                "language": item.language,
+                "path": item.path,
+                "qualified_name": item.qualified_name,
+                "symbol_kind": item.symbol_kind.value,
+                "line_start": item.line_start,
+                "line_end": item.line_end,
+            }
+            for item in symbols
+        ],
+        "dependencies": [
+            {
+                "source_symbol_key": item.source_symbol_key,
+                "target_name": item.target_name,
+                "dependency_kind": item.dependency_kind.value,
+                "path": item.path,
+                "line_start": item.line_start,
+                "line_end": item.line_end,
+                "ordinal": item.ordinal,
+            }
+            for item in dependencies
+        ],
+        "status": status.value,
+        "error_lines": list(error_lines),
+    }
+
+
 def extract_code_graph(
     files: tuple[GitFile, ...],
     evidence_by_path: dict[str, Evidence],
@@ -527,31 +617,73 @@ def extract_code_graph(
     task_id: UUID,
     repository_version: RepositoryVersion,
     isolate_native: bool = True,
+    cache_path: Path | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> CodeGraphExtraction:
     """Parse supported committed files and return deterministic, evidence-bound entities."""
 
     parsed_symbols: list[_ParsedSymbol] = []
     parsed_dependencies: list[_ParsedDependency] = []
     parsed_diagnostics: list[tuple[str, str, ParseStatus, tuple[int, ...], UUID]] = []
+    cached_entries: dict[str, object] = {}
+    if cache_path is not None and cache_path.is_file():
+        try:
+            payload = json.loads(cache_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and payload.get("schema_version") == 1:
+                raw_entries = payload.get("entries", {})
+                if isinstance(raw_entries, dict):
+                    cached_entries = raw_entries
+        except (OSError, ValueError):
+            cached_entries = {}
+    retained_entries: dict[str, object] = {}
+    supported = [
+        item
+        for item in files
+        if LANGUAGE_BY_SUFFIX.get(Path(item.path).suffix.lower()) is not None
+    ]
+    parsed_count = 0
+    reused_count = 0
     for git_file in sorted(files, key=lambda item: item.path):
         language = LANGUAGE_BY_SUFFIX.get(Path(git_file.path).suffix.lower())
         if language is None:
             continue
         evidence = evidence_by_path[git_file.path]
-        try:
-            parse = _parse_file_isolated if isolate_native else _parse_file
-            file_symbols, file_dependencies, status, error_lines = parse(
-                git_file, evidence, language
-            )
-        except Exception as exc:  # pragma: no cover - parser boundary is tested via injection
-            file_symbols = []
-            file_dependencies = []
-            status = ParseStatus.FAILED
-            error_lines = ()
-            _ = exc
+        cache_key = f"{language}:{git_file.path}:{git_file.content_hash}"
+        parsed = _cached_parse(cached_entries.get(cache_key), evidence_id=evidence.id)
+        if parsed is None:
+            try:
+                parse = _parse_file_isolated if isolate_native else _parse_file
+                parsed = parse(git_file, evidence, language)
+            except Exception as exc:  # pragma: no cover - parser boundary is tested via injection
+                parsed = ([], [], ParseStatus.FAILED, ())
+                _ = exc
+            parsed_count += 1
+            retained_entries[cache_key] = _cache_payload(parsed)
+        else:
+            reused_count += 1
+            retained_entries[cache_key] = cached_entries[cache_key]
+        file_symbols, file_dependencies, status, error_lines = parsed
         parsed_symbols.extend(file_symbols)
         parsed_dependencies.extend(file_dependencies)
         parsed_diagnostics.append((git_file.path, language, status, error_lines, evidence.id))
+        completed = parsed_count + reused_count
+        progress_interval = max(1, len(supported) // 10)
+        if progress is not None and (
+            completed == 1 or completed == len(supported) or completed % progress_interval == 0
+        ):
+            progress(
+                f"Indexed {completed}/{len(supported)} source files "
+                f"({parsed_count} parsed, {reused_count} reused)."
+            )
+
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = cache_path.with_suffix(cache_path.suffix + ".tmp")
+        temporary.write_text(
+            json.dumps({"schema_version": 1, "entries": retained_entries}, separators=(",", ":")),
+            encoding="utf-8",
+        )
+        temporary.replace(cache_path)
 
     parsed_symbols = _merge_logical_symbols(parsed_symbols)
     symbol_by_key = {item.logical_key: item for item in parsed_symbols}

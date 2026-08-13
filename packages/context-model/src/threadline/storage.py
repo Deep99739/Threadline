@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -44,6 +44,11 @@ from threadline.models import (
     Task,
     Verification,
 )
+
+if TYPE_CHECKING:
+    from threadline.compiler import CompiledHandoff
+
+LOCAL_HANDOFF_HISTORY = 8
 
 
 class Base(DeclarativeBase):
@@ -215,6 +220,7 @@ class ThreadlineStore:
         snapshot: ContextSnapshot,
         *,
         evidence_content: Mapping[UUID, str],
+        replace_current: bool = False,
     ) -> None:
         validate_snapshot(snapshot)
         entities: tuple[tuple[str, BaseModel], ...] = (
@@ -231,6 +237,29 @@ class ThreadlineStore:
             *(("edge", item) for item in snapshot.edges),
         )
         with self._sessions.begin() as session:
+            if replace_current:
+                prior_rows = session.scalars(
+                    select(ContextEntityRow).where(
+                        ContextEntityRow.tenant_id == str(snapshot.tenant_id),
+                        ContextEntityRow.workspace_id == str(snapshot.workspace_id),
+                        ContextEntityRow.repository_id
+                        == str(snapshot.repository_version.repository_id),
+                        ContextEntityRow.task_id == str(snapshot.task.id),
+                        ContextEntityRow.entity_type != "context_version",
+                    )
+                ).all()
+                prior_evidence = [
+                    item.id for item in prior_rows if item.entity_type == "evidence"
+                ]
+                if prior_evidence:
+                    session.execute(
+                        delete(EvidenceContentRow).where(
+                            EvidenceContentRow.evidence_id.in_(prior_evidence)
+                        )
+                    )
+                for row in prior_rows:
+                    session.delete(row)
+                session.flush()
             incoming_ids = {
                 str(entity.model_dump(mode="python")["id"]) for _entity_type, entity in entities
             }
@@ -472,6 +501,75 @@ class ThreadlineStore:
         if row is None:
             raise LookupError("handoff was not found in the authorized scope")
         return dict(row.compiled_content)
+
+    def load_latest_compiled_handoff(
+        self, *, tenant_id: UUID, workspace_id: UUID, task_id: UUID
+    ) -> CompiledHandoff:
+        """Rehydrate the immutable latest result for a commit-aware no-op synchronization."""
+
+        from threadline.compiler import CompiledHandoff
+        from threadline.models import ContextPack
+
+        with self._sessions() as session:
+            row = session.scalar(
+                select(HandoffRow)
+                .where(
+                    HandoffRow.tenant_id == str(tenant_id),
+                    HandoffRow.workspace_id == str(workspace_id),
+                    HandoffRow.task_id == str(task_id),
+                )
+                .order_by(HandoffRow.created_at.desc())
+                .limit(1)
+            )
+            if row is None:
+                raise LookupError("handoff was not found in the authorized scope")
+            version_row = session.get(ContextEntityRow, row.context_version_id)
+            if version_row is None or version_row.entity_type != "context_version":
+                raise LookupError("handoff context version was not found")
+            content = dict(row.compiled_content)
+            return CompiledHandoff(
+                context_pack=ContextPack.model_validate(content["context_pack"]),
+                context_version=ContextVersion.model_validate(version_row.payload),
+                handoff=Handoff.model_validate(row.payload),
+                content=content,
+            )
+
+    def prune_task_history(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        task_id: UUID,
+        retain: int = LOCAL_HANDOFF_HISTORY,
+    ) -> None:
+        """Bound derived local history while retaining recent semantic comparisons."""
+
+        if retain < 1:
+            raise ValueError("at least one handoff must be retained")
+        with self._sessions.begin() as session:
+            rows = session.scalars(
+                select(HandoffRow)
+                .where(
+                    HandoffRow.tenant_id == str(tenant_id),
+                    HandoffRow.workspace_id == str(workspace_id),
+                    HandoffRow.task_id == str(task_id),
+                )
+                .order_by(HandoffRow.created_at.desc())
+            ).all()
+            discarded = rows[retain:]
+            discarded_versions = {item.context_version_id for item in discarded}
+            for row in discarded:
+                session.delete(row)
+            if discarded_versions:
+                session.execute(
+                    delete(ContextEntityRow).where(
+                        ContextEntityRow.tenant_id == str(tenant_id),
+                        ContextEntityRow.workspace_id == str(workspace_id),
+                        ContextEntityRow.task_id == str(task_id),
+                        ContextEntityRow.entity_type == "context_version",
+                        ContextEntityRow.id.in_(discarded_versions),
+                    )
+                )
 
     def reset_tenant_for_demo(self, tenant_id: UUID) -> None:
         """Delete one explicit synthetic tenant; unavailable through public serving APIs."""

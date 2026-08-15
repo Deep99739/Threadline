@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,7 @@ def onboard_workspace(
     next_action: str,
     client: str,
     python_executable: Path | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
     """Create the contract, compile context, and connect one client in one safe command."""
 
@@ -54,8 +56,7 @@ def onboard_workspace(
     dirty_paths = read_worktree_dirty_paths(root)
     if dirty_paths:
         raise ValueError(
-            "onboarding requires a clean working tree; commit or revert: "
-            + ", ".join(dirty_paths)
+            "onboarding requires a clean working tree; commit or revert: " + ", ".join(dirty_paths)
         )
 
     manifest_path = root / MANIFEST_PATH
@@ -67,6 +68,8 @@ def onboard_workspace(
                 "threadline.json already defines a different task; use checkpoint to change it"
             )
     else:
+        if progress is not None:
+            progress("Creating and committing the Threadline task contract.")
         _path, manifest = initialize_manifest(
             root,
             objective=objective,
@@ -78,7 +81,11 @@ def onboard_workspace(
             "Add Threadline context",
         )
 
-    synced = sync_local_workspace(root)
+    if progress is not None:
+        progress("Indexing committed repository context.")
+    synced = sync_local_workspace(root, progress=progress)
+    if progress is not None:
+        progress(f"Connecting the {client} project profile.")
     connection = connect_client(
         root,
         client,
@@ -91,11 +98,15 @@ def onboard_workspace(
     report = inspect_workspace(root)
     if not report["ready"]:
         raise RuntimeError("onboarding did not produce a current trusted handoff")
+    if progress is not None:
+        progress("Verifying the configured MCP server identity.")
     client_connection = verify_client_connection(
         root,
         client,
         python_executable=python_executable,
     )
+    if progress is not None:
+        progress("Onboarding complete.")
     return {
         "ready": True,
         "repository": str(root),
@@ -362,11 +373,7 @@ def advance_workspace(
         json.dumps(updated.model_dump(mode="json"), indent=2) + "\n",
         encoding="utf-8",
     )
-    paths = list(
-        dict.fromkeys(
-            [*live.dirty_paths, *check["paths_to_commit_together"]]
-        )
-    )
+    paths = list(dict.fromkeys([*live.dirty_paths, *check["paths_to_commit_together"]]))
     return {
         "status": check["status"],
         "exit_code": check["exit_code"],
@@ -407,9 +414,7 @@ def handoff_content(repository_path: Path, *, database_url: str | None = None) -
                 task_id=workspace.manifest.task.id,
             )
         except (LookupError, SQLAlchemyError) as error:
-            raise LookupError(
-                "no compiled handoff exists; run threadline sync first"
-            ) from error
+            raise LookupError("no compiled handoff exists; run threadline sync first") from error
     finally:
         store.close()
     version = content.get("repository_version", {})

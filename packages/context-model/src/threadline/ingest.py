@@ -161,6 +161,8 @@ def ingest_local_repository(
     replace_current_snapshot: bool = False,
     progress: Callable[[str], None] | None = None,
 ) -> IngestionResult:
+    if progress is not None:
+        progress("Reading the committed Git snapshot.")
     git_snapshot = read_git_snapshot(path, repository_id)
     manifest: ProjectManifest = manifest_from_git_snapshot(git_snapshot)
     scoped_files = tuple(
@@ -169,6 +171,8 @@ def ingest_local_repository(
         if item.path == "threadline.json"
         or not path_is_excluded(item.path, manifest.evidence_exclusions)
     )
+    if progress is not None:
+        progress(f"Collected {len(scoped_files)} tracked text files for evidence.")
     file_by_path = {item.path: item for item in scoped_files}
     safe_content_by_path = {item.path: safe_git_file(item) for item in scoped_files}
     evidence_by_path: dict[str, Evidence] = {}
@@ -366,6 +370,8 @@ def ingest_local_repository(
     verified_claims = tuple(verified_claims_list)
     claims = tuple(item[0] for item in verified_claims)
     verifications = tuple(item[1] for item in verified_claims if item[1] is not None)
+    if progress is not None:
+        progress("Building the committed code graph.")
     code_graph = extract_code_graph(
         scoped_files,
         evidence_by_path,
@@ -377,6 +383,11 @@ def ingest_local_repository(
         cache_path=code_cache_path,
         progress=progress,
     )
+    if progress is not None:
+        progress(
+            f"Built {len(code_graph.symbols)} symbols and "
+            f"{len(code_graph.dependencies)} code relationships."
+        )
 
     edges: list[ContextEdge] = []
     for claim in claims:

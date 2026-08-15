@@ -11,7 +11,7 @@ from tests.unit.test_models import ACTOR, TENANT, WORKSPACE, repository_version
 from threadline import code_graph
 from threadline.code_graph import CodeGraphExtraction, extract_code_graph
 from threadline.git_repository import GitFile, evidence_from_git_file
-from threadline.models import DependencyKind, ParseStatus, SymbolKind
+from threadline.models import DependencyKind, Evidence, ParseStatus, SymbolKind
 
 TASK_ID = UUID("30000000-0000-4000-8000-000000000099")
 
@@ -59,10 +59,7 @@ def test_extracts_python_symbols_calls_construction_and_local_imports() -> None:
 
     result = _extract(shared, worker)
 
-    assert {
-        (item.qualified_name, item.symbol_kind)
-        for item in result.symbols
-    } >= {
+    assert {(item.qualified_name, item.symbol_kind) for item in result.symbols} >= {
         ("shared", SymbolKind.MODULE),
         ("shared.helper", SymbolKind.FUNCTION),
         ("worker.Worker", SymbolKind.CLASS),
@@ -94,8 +91,7 @@ def test_extracts_python_symbols_calls_construction_and_local_imports() -> None:
 def test_extracts_javascript_and_typescript_functions_methods_and_construction() -> None:
     javascript = _file(
         "web.js",
-        "class Panel { render() { return helper(); } }\n"
-        "const mount = () => new Panel();\n",
+        "class Panel { render() { return helper(); } }\nconst mount = () => new Panel();\n",
     )
     typescript = _file(
         "client.ts",
@@ -143,9 +139,7 @@ def test_exact_snapshot_produces_stable_entity_ids() -> None:
     second = _extract(source)
 
     assert [item.id for item in first.symbols] == [item.id for item in second.symbols]
-    assert [item.id for item in first.diagnostics] == [
-        item.id for item in second.diagnostics
-    ]
+    assert [item.id for item in first.diagnostics] == [item.id for item in second.diagnostics]
 
 
 def test_overloads_are_one_logical_symbol_with_a_complete_source_range() -> None:
@@ -197,13 +191,48 @@ def test_native_parser_failure_becomes_an_explicit_empty_diagnostic(
     def fail_parse(*_args: object) -> object:
         raise RuntimeError("native parser stopped")
 
-    monkeypatch.setattr(code_graph, "_parse_file_isolated", fail_parse)
+    monkeypatch.setattr(code_graph._IsolatedParserSession, "parse", fail_parse)
 
     result = _extract(source, isolate_native=True)
 
     assert result.diagnostics[0].status is ParseStatus.FAILED
     assert not result.symbols
     assert not result.dependencies
+
+
+def test_one_isolated_parser_worker_is_reused_for_the_full_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _file("first.py", "def first() -> int:\n    return 1\n")
+    second = _file("second.py", "def second() -> int:\n    return 2\n")
+    instances: list[object] = []
+    parsed_paths: list[str] = []
+    closed: list[bool] = []
+
+    class FakeSession:
+        def __init__(self) -> None:
+            instances.append(self)
+
+        def parse(
+            self,
+            git_file: GitFile,
+            evidence: Evidence,
+            language: str,
+        ) -> object:
+            parsed_paths.append(git_file.path)
+            return code_graph._parse_file(git_file, evidence, language)
+
+        def close(self) -> None:
+            closed.append(True)
+
+    monkeypatch.setattr(code_graph, "_IsolatedParserSession", FakeSession)
+
+    result = _extract(first, second, isolate_native=True)
+
+    assert len(instances) == 1
+    assert parsed_paths == ["first.py", "second.py"]
+    assert closed == [True]
+    assert all(item.status is ParseStatus.COMPLETE for item in result.diagnostics)
 
 
 def test_content_hash_cache_reuses_unchanged_files_and_rebinds_evidence(

@@ -277,13 +277,16 @@ def test_cli_onboard_returns_first_value_in_one_command(
             sys.executable,
         ]
     )
-    result = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    result = json.loads(captured.out)
 
     assert result["ready"] is True
     assert result["context_commit"] == git(root, "rev-parse", "HEAD")
     assert result["client_connection"]["server"]["verified"] is True
     assert result["client_connection"]["trust"]["trusted"] is False
     assert "choose Trust" in result["first_action"]
+    assert "Threadline: Indexing committed repository context." in captured.err
+    assert "Threadline: Onboarding complete." in captured.err
     assert git(root, "status", "--porcelain=v1", "--untracked-files=all") == ""
 
 
@@ -301,6 +304,9 @@ def test_client_profiles_are_project_scoped_reviewable_and_secret_free(tmp_path:
     assert clients["cursor"]["path"] == ".cursor/mcp.json"
     assert clients["vscode"]["content"]["servers"]["threadline"]["type"] == "stdio"
     assert clients["antigravity"]["path"] == ".agents/mcp_config.json"
+    antigravity_key = clients["antigravity"]["server_key"]
+    assert antigravity_key.startswith("threadline-")
+    assert list(clients["antigravity"]["content"]["mcpServers"]) == [antigravity_key]
     assert clients["claude"]["path"] == ".mcp.json"
     assert profiles["server"]["local_database"] == str(
         root / ".git" / "threadline" / "threadline.db"

@@ -131,6 +131,8 @@ def sync_local_workspace(
                 == workspace.git_snapshot.repository_version
                 and existing.content.get("query") == requested_query
             ):
+                if progress is not None:
+                    progress("Reused the current exact-commit handoff.")
                 return WorkspaceSyncResult(
                     workspace=workspace,
                     database_url=resolved_database_url,
@@ -143,6 +145,8 @@ def sync_local_workspace(
             replace_current_snapshot=resolved_database_url.startswith("sqlite"),
             progress=progress,
         )
+        if progress is not None:
+            progress("Compiling the evidence-bound handoff.")
         handoff = service.compile_task_handoff(
             scope=workspace.scope,
             task_id=workspace.manifest.task.id,

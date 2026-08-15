@@ -16,7 +16,12 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 from threadline.client_profiles import build_client_profiles
 
 
-async def _probe_server(server: dict[str, Any], root: Path) -> dict[str, Any]:
+async def _probe_server(
+    server: dict[str, Any],
+    root: Path,
+    *,
+    expected_identity: dict[str, str],
+) -> dict[str, Any]:
     parameters = StdioServerParameters(
         command=str(server["command"]),
         args=[str(item) for item in server["args"]],
@@ -28,11 +33,78 @@ async def _probe_server(server: dict[str, Any], root: Path) -> dict[str, Any]:
     ):
         initialized = await session.initialize()
         tools = await session.list_tools()
+        status = await session.call_tool("get_workspace_status", {})
+        structured = status.structured_content
+        if status.is_error or not isinstance(structured, dict):
+            return {
+                "verified": False,
+                "server": initialized.server_info.name,
+                "tools": sorted(item.name for item in tools.tools),
+                "reason": "Threadline did not return a structured workspace identity.",
+            }
+        repository = structured.get("repository")
+        data = structured.get("data")
+        if not isinstance(repository, dict) or not isinstance(data, dict):
+            return {
+                "verified": False,
+                "server": initialized.server_info.name,
+                "tools": sorted(item.name for item in tools.tools),
+                "reason": "Threadline returned an incomplete workspace identity.",
+            }
+        actual_identity = {
+            "repository_id": str(repository.get("id", "")),
+            "branch": str(repository.get("branch", "")),
+            "commit": str(repository.get("commit", "")),
+            "task_id": str(data.get("task_id", "")),
+        }
+        identity_matches = actual_identity == expected_identity
         return {
-            "verified": initialized.server_info.name == "Threadline" and bool(tools.tools),
+            "verified": (
+                initialized.server_info.name == "Threadline"
+                and bool(tools.tools)
+                and identity_matches
+            ),
             "server": initialized.server_info.name,
             "tools": sorted(item.name for item in tools.tools),
+            "identity": actual_identity,
+            "expected_identity": expected_identity,
+            "identity_matches": identity_matches,
+            "reason": (
+                "Configured MCP server returned this repository's exact identity."
+                if identity_matches
+                else "Configured MCP server returned a different repository identity."
+            ),
         }
+
+
+def _configured_server(
+    target: Path,
+    client_name: str,
+    profile: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Read the server the client will load instead of rebuilding a parallel one."""
+
+    server_key = str(profile.get("server_key", "threadline"))
+    try:
+        if client_name == "codex":
+            payload = tomllib.loads(target.read_text(encoding="utf-8"))
+            container = payload.get("mcp_servers", {})
+        else:
+            payload = json.loads(target.read_text(encoding="utf-8"))
+            container_key = "servers" if client_name == "vscode" else "mcpServers"
+            container = payload.get(container_key, {}) if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError, tomllib.TOMLDecodeError) as error:
+        return None, f"Client profile is unreadable: {error}"
+    if not isinstance(container, dict):
+        return None, "Client profile does not contain an MCP server map."
+    server = container.get(server_key)
+    if not isinstance(server, dict):
+        return None, f"Client profile does not contain expected server {server_key!r}."
+    command = server.get("command")
+    args = server.get("args")
+    if not isinstance(command, str) or not isinstance(args, list):
+        return None, f"Configured server {server_key!r} is malformed."
+    return server, None
 
 
 def _codex_trust(root: Path) -> dict[str, Any]:
@@ -56,9 +128,7 @@ def _codex_trust(root: Path) -> dict[str, Any]:
                 "repository is trusted. Open this repository in Codex, review it, and choose Trust."
             )
         ),
-        "documentation": (
-            "https://learn.chatgpt.com/docs/config-file/config-reference#configtoml"
-        ),
+        "documentation": ("https://learn.chatgpt.com/docs/config-file/config-reference#configtoml"),
     }
 
 
@@ -129,29 +199,86 @@ def verify_client_connection(
             "server": {"verified": False, "reason": "Connect this client first."},
             "next_action": f"threadline connect {client_name} {root}",
         }
-    try:
-        server = asyncio.run(_probe_server(profiles["server"], root))
-    except Exception as error:
-        server = {"verified": False, "reason": f"MCP handshake failed: {error}"}
-    native: dict[str, Any] = {"verified": True, "reason": "Project profile is present."}
+    configured_server, profile_error = _configured_server(
+        target,
+        client_name,
+        clients[client_name],
+    )
+    expected_identity = {
+        "repository_id": str(profiles["repository_id"]),
+        "branch": str(profiles["repository_version"]["branch"]),
+        "commit": str(profiles["repository_version"]["commit"]),
+        "task_id": str(profiles["task_id"]),
+    }
+    if configured_server is None:
+        server = {"verified": False, "reason": profile_error}
+    else:
+        try:
+            server = asyncio.run(
+                _probe_server(
+                    configured_server,
+                    root,
+                    expected_identity=expected_identity,
+                )
+            )
+        except Exception as error:
+            server = {"verified": False, "reason": f"MCP handshake failed: {error}"}
+    native: dict[str, Any] = {
+        "verified": bool(server.get("verified")),
+        "reason": (
+            "Project profile is present and its configured server returned the expected identity."
+            if server.get("verified")
+            else str(server.get("reason", "The configured server identity could not be verified."))
+        ),
+    }
     trust: dict[str, Any] | None = None
     if client_name == "codex":
         trust = _codex_trust(root)
-        native = _codex_registration(root) if trust["trusted"] else {
-            "verified": False,
-            "reason": trust["reason"],
-        }
+        native = (
+            _codex_registration(root)
+            if trust["trusted"]
+            else {
+                "verified": False,
+                "reason": trust["reason"],
+            }
+        )
     verified = bool(server.get("verified")) and bool(native.get("verified"))
+    active_session: dict[str, Any] | None = None
+    if client_name == "antigravity":
+        active_session = {
+            "verified": None,
+            "reason": (
+                "The CLI cannot inspect an already-open Antigravity process. Restart Antigravity "
+                "after connecting, then ask it to report Threadline's exact repository and commit."
+            ),
+        }
     return {
         "verified": verified,
         "client": client_name,
-        "profile": {"present": True, "path": str(target)},
+        "profile": {
+            "present": True,
+            "path": str(target),
+            "server_key": str(clients[client_name].get("server_key", "threadline")),
+        },
         "server": server,
         "native_client": native,
+        "active_session": active_session,
         "trust": trust,
         "next_action": (
-            "Ask the client: Use Threadline to report the current task, commit, and next action."
+            (
+                "Restart Antigravity, then ask it: Use Threadline to report the exact repository, "
+                "commit, task, and next action."
+                if client_name == "antigravity"
+                else (
+                    "Ask the client: Use Threadline to report the current task, commit, "
+                    "and next action."
+                )
+            )
             if verified
-            else str(native.get("reason", "Reload the client and run this check again."))
+            else (
+                f"threadline connect {client_name} {root}"
+                if configured_server is None
+                else str(native.get("reason", "Reload the client and run this check again."))
+            )
         ),
     }

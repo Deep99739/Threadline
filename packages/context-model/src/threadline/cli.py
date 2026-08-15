@@ -41,9 +41,7 @@ def _parser() -> argparse.ArgumentParser:
     migrate = subparsers.add_parser("migrate", help="apply explicit schema migrations")
     migrate.add_argument("--database-url")
 
-    init = subparsers.add_parser(
-        "init", help="create a repository-owned Threadline manifest"
-    )
+    init = subparsers.add_parser("init", help="create a repository-owned Threadline manifest")
     init.add_argument("repository", nargs="?", type=Path, default=Path.cwd())
     init.add_argument("--objective", required=True)
     init.add_argument("--next-action", required=True)
@@ -202,8 +200,7 @@ def main(arguments: Sequence[str] | None = None) -> None:
                     "repository_id": str(manifest.repository_id),
                     "task_id": str(manifest.task.id),
                     "next": (
-                        "Review threadline.json, then commit it before running "
-                        "threadline sync."
+                        "Review threadline.json, then commit it before running threadline sync."
                     ),
                 },
                 indent=2,
@@ -211,6 +208,10 @@ def main(arguments: Sequence[str] | None = None) -> None:
         )
         return
     if parsed.command == "onboard":
+
+        def onboard_progress(message: str) -> None:
+            print(f"Threadline: {message}", file=sys.stderr, flush=True)
+
         print(
             json.dumps(
                 onboard_workspace(
@@ -219,12 +220,14 @@ def main(arguments: Sequence[str] | None = None) -> None:
                     next_action=parsed.next_action,
                     client=parsed.client,
                     python_executable=parsed.python_executable,
+                    progress=onboard_progress,
                 ),
                 indent=2,
             )
         )
         return
     if parsed.command == "sync":
+
         def sync_progress(message: str) -> None:
             print(f"Threadline: {message}", file=sys.stderr, flush=True)
 

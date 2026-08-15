@@ -12,7 +12,7 @@ from functools import lru_cache
 from multiprocessing import get_context
 from multiprocessing.connection import Connection
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid5
 
 import tree_sitter_javascript
@@ -200,9 +200,7 @@ def _definition(
         name = match.group(1) if match else None
         return (name, SymbolKind.FUNCTION) if name else None
     if language != "python" and node.node_type == "method_definition":
-        match = re.match(
-            r"(?:(?:static|async|get|set)\s+)*([A-Za-z_$][\w$]*)\s*\(", source
-        )
+        match = re.match(r"(?:(?:static|async|get|set)\s+)*([A-Za-z_$][\w$]*)\s*\(", source)
         name = match.group(1) if match else None
         return (name, SymbolKind.METHOD) if name else None
     if language != "python" and node.node_type == "variable_declarator":
@@ -334,9 +332,7 @@ def _parse_file(
 
         owner = active_scopes[-1][0] if active_scopes else module
         import_targets = (
-            _import_targets(node, language, content)
-            if node.node_type in IMPORT_NODE_TYPES
-            else ()
+            _import_targets(node, language, content) if node.node_type in IMPORT_NODE_TYPES else ()
         )
         for target in import_targets:
             start, end = _line_range(node)
@@ -353,11 +349,7 @@ def _parse_file(
                 )
             )
             ordinal += 1
-        call = (
-            _call_target(node, language, content)
-            if node.node_type in CALL_NODE_TYPES
-            else None
-        )
+        call = _call_target(node, language, content) if node.node_type in CALL_NODE_TYPES else None
         if call is not None:
             target, dependency_kind = call
             start, end = _line_range(node)
@@ -381,25 +373,108 @@ def _parse_file(
 
 def _parse_file_worker(
     connection: Connection,
-    git_file: GitFile,
-    evidence: Evidence,
-    language: str,
 ) -> None:  # pragma: no cover - coverage is owned by the isolated child process
-    """Run native parser access where a binding crash cannot kill the caller."""
+    """Serve parser requests in one isolated process for the full indexing run."""
 
     error_sink = os.open(os.devnull, os.O_WRONLY)
     os.dup2(error_sink, 2)
     os.close(error_sink)
     try:
-        try:
-            connection.send(("ok", _parse_file(git_file, evidence, language)))
-        except Exception as exc:  # pragma: no cover - exercised across process boundary
-            connection.send(("error", f"{type(exc).__name__}: {exc}"))
-        if connection.poll(PARSE_TIMEOUT_SECONDS):
-            connection.recv()
+        while True:
+            try:
+                request = connection.recv()
+            except EOFError:
+                break
+            if request == "close":
+                connection.send(("closed", None))
+                break
+            git_file, evidence, language = cast(tuple[GitFile, Evidence, str], request)
+            try:
+                connection.send(("ok", _parse_file(git_file, evidence, language)))
+            except Exception as exc:  # pragma: no cover - exercised across process boundary
+                connection.send(("error", f"{type(exc).__name__}: {exc}"))
     finally:
         connection.close()
     os._exit(0)
+
+
+class _IsolatedParserSession:
+    """Reuse one crash-isolated native parser instead of spawning once per file."""
+
+    def __init__(self) -> None:
+        self._connection: Connection | None = None
+        self._process: Any | None = None
+
+    def _start(self) -> None:
+        context = get_context("spawn")
+        receiver, sender = context.Pipe(duplex=True)
+        process = context.Process(
+            target=_parse_file_worker,
+            args=(sender,),
+            daemon=True,
+        )
+        process.start()
+        sender.close()
+        self._connection = receiver
+        self._process = process
+
+    def _stop(self) -> None:
+        connection = self._connection
+        process = self._process
+        self._connection = None
+        self._process = None
+        if connection is not None:
+            connection.close()
+        if process is not None:
+            process.join(timeout=1)
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=1)
+
+    def parse(
+        self,
+        git_file: GitFile,
+        evidence: Evidence,
+        language: str,
+    ) -> tuple[list[_ParsedSymbol], list[_ParsedDependency], ParseStatus, tuple[int, ...]]:
+        if self._connection is None:
+            self._start()
+        connection = self._connection
+        process = self._process
+        if connection is None or process is None:
+            raise RuntimeError("isolated parser did not start")
+        try:
+            connection.send((git_file, evidence, language))
+            if not connection.poll(PARSE_TIMEOUT_SECONDS):
+                raise TimeoutError(f"parser exceeded {PARSE_TIMEOUT_SECONDS} seconds")
+            outcome, payload = connection.recv()
+        except (BrokenPipeError, EOFError, OSError, TimeoutError) as error:
+            exit_code = process.exitcode
+            self._stop()
+            if isinstance(error, TimeoutError):
+                raise
+            raise RuntimeError(
+                f"native parser exited without a result (exit code {exit_code})"
+            ) from error
+        if outcome != "ok":
+            raise RuntimeError(str(payload))
+        return cast(
+            tuple[list[_ParsedSymbol], list[_ParsedDependency], ParseStatus, tuple[int, ...]],
+            payload,
+        )
+
+    def close(self) -> None:
+        connection = self._connection
+        process = self._process
+        if connection is None or process is None:
+            return
+        try:
+            connection.send("close")
+            if connection.poll(1):
+                connection.recv()
+        except (BrokenPipeError, EOFError, OSError):
+            pass
+        self._stop()
 
 
 def _parse_file_isolated(
@@ -407,43 +482,13 @@ def _parse_file_isolated(
     evidence: Evidence,
     language: str,
 ) -> tuple[list[_ParsedSymbol], list[_ParsedDependency], ParseStatus, tuple[int, ...]]:
-    context = get_context("spawn")
-    receiver, sender = context.Pipe(duplex=True)
-    process = context.Process(
-        target=_parse_file_worker,
-        args=(sender, git_file, evidence, language),
-        daemon=True,
-    )
-    process.start()
-    sender.close()
+    """Parse one file in isolation; retained for focused callers and tests."""
+
+    session = _IsolatedParserSession()
     try:
-        if not receiver.poll(PARSE_TIMEOUT_SECONDS):
-            process.terminate()
-            process.join(timeout=1)
-            raise TimeoutError(f"parser exceeded {PARSE_TIMEOUT_SECONDS} seconds")
-        try:
-            outcome, payload = receiver.recv()
-            receiver.send("received")
-        except EOFError as exc:
-            process.join(timeout=1)
-            raise RuntimeError(
-                f"native parser exited without a result (exit code {process.exitcode})"
-            ) from exc
+        return session.parse(git_file, evidence, language)
     finally:
-        receiver.close()
-    process.join(timeout=1)
-    if process.is_alive():
-        process.terminate()
-        process.join(timeout=1)
-        raise TimeoutError("native parser did not exit after returning a result")
-    if process.exitcode != 0:
-        raise RuntimeError(f"native parser exited with code {process.exitcode}")
-    if outcome != "ok":
-        raise RuntimeError(str(payload))
-    return cast(
-        tuple[list[_ParsedSymbol], list[_ParsedDependency], ParseStatus, tuple[int, ...]],
-        payload,
-    )
+        session.close()
 
 
 def _identity(
@@ -637,44 +682,50 @@ def extract_code_graph(
             cached_entries = {}
     retained_entries: dict[str, object] = {}
     supported = [
-        item
-        for item in files
-        if LANGUAGE_BY_SUFFIX.get(Path(item.path).suffix.lower()) is not None
+        item for item in files if LANGUAGE_BY_SUFFIX.get(Path(item.path).suffix.lower()) is not None
     ]
     parsed_count = 0
     reused_count = 0
-    for git_file in sorted(files, key=lambda item: item.path):
-        language = LANGUAGE_BY_SUFFIX.get(Path(git_file.path).suffix.lower())
-        if language is None:
-            continue
-        evidence = evidence_by_path[git_file.path]
-        cache_key = f"{language}:{git_file.path}:{git_file.content_hash}"
-        parsed = _cached_parse(cached_entries.get(cache_key), evidence_id=evidence.id)
-        if parsed is None:
-            try:
-                parse = _parse_file_isolated if isolate_native else _parse_file
-                parsed = parse(git_file, evidence, language)
-            except Exception as exc:  # pragma: no cover - parser boundary is tested via injection
-                parsed = ([], [], ParseStatus.FAILED, ())
-                _ = exc
-            parsed_count += 1
-            retained_entries[cache_key] = _cache_payload(parsed)
-        else:
-            reused_count += 1
-            retained_entries[cache_key] = cached_entries[cache_key]
-        file_symbols, file_dependencies, status, error_lines = parsed
-        parsed_symbols.extend(file_symbols)
-        parsed_dependencies.extend(file_dependencies)
-        parsed_diagnostics.append((git_file.path, language, status, error_lines, evidence.id))
-        completed = parsed_count + reused_count
-        progress_interval = max(1, len(supported) // 10)
-        if progress is not None and (
-            completed == 1 or completed == len(supported) or completed % progress_interval == 0
-        ):
-            progress(
-                f"Indexed {completed}/{len(supported)} source files "
-                f"({parsed_count} parsed, {reused_count} reused)."
-            )
+    isolated_parser = _IsolatedParserSession() if isolate_native else None
+    try:
+        for git_file in sorted(files, key=lambda item: item.path):
+            language = LANGUAGE_BY_SUFFIX.get(Path(git_file.path).suffix.lower())
+            if language is None:
+                continue
+            evidence = evidence_by_path[git_file.path]
+            cache_key = f"{language}:{git_file.path}:{git_file.content_hash}"
+            parsed = _cached_parse(cached_entries.get(cache_key), evidence_id=evidence.id)
+            if parsed is None:
+                try:
+                    parsed = (
+                        isolated_parser.parse(git_file, evidence, language)
+                        if isolated_parser is not None
+                        else _parse_file(git_file, evidence, language)
+                    )
+                except Exception as exc:  # pragma: no cover - tested via injected boundary
+                    parsed = ([], [], ParseStatus.FAILED, ())
+                    _ = exc
+                parsed_count += 1
+                retained_entries[cache_key] = _cache_payload(parsed)
+            else:
+                reused_count += 1
+                retained_entries[cache_key] = cached_entries[cache_key]
+            file_symbols, file_dependencies, status, error_lines = parsed
+            parsed_symbols.extend(file_symbols)
+            parsed_dependencies.extend(file_dependencies)
+            parsed_diagnostics.append((git_file.path, language, status, error_lines, evidence.id))
+            completed = parsed_count + reused_count
+            progress_interval = max(1, len(supported) // 10)
+            if progress is not None and (
+                completed == 1 or completed == len(supported) or completed % progress_interval == 0
+            ):
+                progress(
+                    f"Indexed {completed}/{len(supported)} source files "
+                    f"({parsed_count} parsed, {reused_count} reused)."
+                )
+    finally:
+        if isolated_parser is not None:
+            isolated_parser.close()
 
     if cache_path is not None:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -785,8 +836,6 @@ def extract_code_graph(
     )
     return CodeGraphExtraction(
         symbols=code_symbols,
-        dependencies=tuple(
-            sorted(code_dependencies, key=lambda value: value.logical_key)
-        ),
+        dependencies=tuple(sorted(code_dependencies, key=lambda value: value.logical_key)),
         diagnostics=diagnostics,
     )

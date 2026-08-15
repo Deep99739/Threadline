@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -21,6 +22,23 @@ OFFICIAL_DOCUMENTATION = {
     "vscode": "https://code.visualstudio.com/docs/agent-customization/mcp-servers",
     "antigravity": "https://antigravity.google/docs/mcp",
 }
+
+
+def _repository_server_key(workspace: LocalWorkspace) -> str:
+    """Return a client-cache key that cannot alias another local repository."""
+
+    path_digest = hashlib.sha256(str(workspace.repository_path).encode("utf-8")).hexdigest()[:8]
+    return f"threadline-{workspace.manifest.repository_id.hex[:8]}-{path_digest}"
+
+
+def _is_threadline_server(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    args = value.get("args")
+    if not isinstance(args, list):
+        return False
+    rendered = [str(item) for item in args]
+    return len(rendered) >= 3 and rendered[:3] == ["-m", "threadline", "mcp"]
 
 
 def _server(workspace: LocalWorkspace, python_executable: Path) -> dict[str, Any]:
@@ -63,6 +81,7 @@ def build_client_profiles(
     workspace = load_local_workspace(repository_path)
     executable = python_executable or Path(sys.executable)
     server = _server(workspace, executable)
+    repository_server_key = _repository_server_key(workspace)
     standard = {"mcpServers": {"threadline": server}}
     vscode = {
         "servers": {
@@ -75,7 +94,12 @@ def build_client_profiles(
     return {
         "schema_version": 1,
         "repository": str(workspace.repository_path),
+        "repository_id": str(workspace.manifest.repository_id),
         "task_id": str(workspace.manifest.task.id),
+        "repository_version": {
+            "branch": workspace.git_snapshot.repository_version.branch,
+            "commit": workspace.git_snapshot.repository_version.commit_sha,
+        },
         "server": {
             **server,
             "transport": "stdio",
@@ -130,7 +154,10 @@ def build_client_profiles(
             "antigravity": {
                 "path": ".agents/mcp_config.json",
                 "merge": True,
-                "content": standard,
+                # Antigravity caches discovered MCP tools by configuration key. A constant
+                # key can therefore retain another repository's already-running server.
+                "server_key": repository_server_key,
+                "content": {"mcpServers": {repository_server_key: server}},
                 "documentation": OFFICIAL_DOCUMENTATION["antigravity"],
             },
         },
@@ -204,6 +231,18 @@ def connect_client(
                 raise ValueError(f"existing client configuration is not an object: {target}")
         else:
             existing_payload = {}
+        if client_name == "antigravity":
+            servers = existing_payload.get("mcpServers")
+            if isinstance(servers, dict):
+                retained_servers = {
+                    name: value
+                    for name, value in servers.items()
+                    if not _is_threadline_server(value)
+                }
+                existing_payload = {
+                    **existing_payload,
+                    "mcpServers": retained_servers,
+                }
         rendered = json.dumps(_merge_json(existing_payload, addition_payload), indent=2) + "\n"
 
     previous = target.read_text(encoding="utf-8") if target.exists() else None
@@ -219,10 +258,16 @@ def connect_client(
         "scope": "project",
         "contains_secrets": False,
         "tools": "read-only",
+        "server_key": str(profile.get("server_key", "threadline")),
         "next_steps": [
             f"Review {target.relative_to(root)}; Threadline keeps it local by default.",
             "Run threadline doctor . to confirm the exact handoff is current.",
-            "Open the client and approve the local MCP server when prompted.",
+            (
+                "Quit and reopen Antigravity, then approve the repository-specific "
+                "local MCP server when prompted."
+                if client_name == "antigravity"
+                else "Open the client and approve the local MCP server when prompted."
+            ),
         ],
     }
 
@@ -267,9 +312,16 @@ def disconnect_client(repository_path: Path, client_name: str) -> dict[str, Any]
                 raise ValueError(f"existing client configuration is not an object: {target}")
             container_key = "servers" if client_name == "vscode" else "mcpServers"
             servers = payload.get(container_key)
-            if isinstance(servers, dict) and "threadline" in servers:
+            if isinstance(servers, dict):
                 servers = dict(servers)
-                servers.pop("threadline")
+                if client_name == "antigravity":
+                    servers = {
+                        name: value
+                        for name, value in servers.items()
+                        if not _is_threadline_server(value)
+                    }
+                else:
+                    servers.pop("threadline", None)
                 payload[container_key] = servers
             rendered = json.dumps(payload, indent=2) + "\n"
         changed = rendered != target.read_text(encoding="utf-8")
@@ -284,9 +336,7 @@ def disconnect_client(repository_path: Path, client_name: str) -> dict[str, Any]
             removed_file = True
         elif changed:
             target.write_text(rendered, encoding="utf-8")
-    exclusion_removed = remove_local_worktree_exclusion(
-        root, target.relative_to(root).as_posix()
-    )
+    exclusion_removed = remove_local_worktree_exclusion(root, target.relative_to(root).as_posix())
     return {
         "client": client_name,
         "path": str(target),

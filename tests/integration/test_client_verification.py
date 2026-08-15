@@ -16,8 +16,8 @@ from threadline.manifest import initialize_manifest
 from threadline.workspace import sync_local_workspace
 
 
-def _repository(tmp_path: Path) -> Path:
-    root = tmp_path / "client-verification"
+def _repository(tmp_path: Path, name: str = "client-verification") -> Path:
+    root = tmp_path / name
     root.mkdir()
     git(root, "init", "-b", "main")
     git(root, "config", "user.name", "Repository Owner")
@@ -59,7 +59,65 @@ def test_verify_client_requires_profile_then_performs_real_stdio_handshake(
     assert verified["verified"] is True
     assert verified["server"]["server"] == "Threadline"
     assert "get_task_context" in verified["server"]["tools"]
+    assert verified["server"]["identity_matches"] is True
+    assert verified["profile"]["server_key"].startswith("threadline-")
+    assert verified["active_session"]["verified"] is None
     assert verified["native_client"]["verified"] is True
+
+
+def test_antigravity_configuration_cannot_silently_point_at_another_repository(
+    tmp_path: Path,
+) -> None:
+    first = _repository(tmp_path, "first-repository")
+    second = _repository(tmp_path, "second-repository")
+    first_connection = connect_client(
+        first,
+        "antigravity",
+        python_executable=Path(sys.executable),
+    )
+    second_connection = connect_client(
+        second,
+        "antigravity",
+        python_executable=Path(sys.executable),
+    )
+
+    assert first_connection["server_key"] != second_connection["server_key"]
+    first_payload = json.loads((first / ".agents" / "mcp_config.json").read_text(encoding="utf-8"))
+    second_target = second / ".agents" / "mcp_config.json"
+    wrong_server = first_payload["mcpServers"][first_connection["server_key"]]
+    second_target.write_text(
+        json.dumps(
+            {"mcpServers": {second_connection["server_key"]: wrong_server}},
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    mismatched = verify_client_connection(
+        second,
+        "antigravity",
+        python_executable=Path(sys.executable),
+    )
+
+    assert mismatched["verified"] is False
+    assert mismatched["server"]["identity_matches"] is False
+    assert (
+        mismatched["server"]["identity"]["repository_id"]
+        != mismatched["server"]["expected_identity"]["repository_id"]
+    )
+
+    connect_client(second, "antigravity", python_executable=Path(sys.executable))
+    corrected = verify_client_connection(
+        second,
+        "antigravity",
+        python_executable=Path(sys.executable),
+    )
+    corrected_payload = json.loads(second_target.read_text(encoding="utf-8"))
+
+    assert corrected["verified"] is True
+    assert corrected["server"]["identity_matches"] is True
+    assert list(corrected_payload["mcpServers"]) == [second_connection["server_key"]]
 
 
 def test_codex_verification_reports_trust_and_native_registration(
@@ -99,7 +157,7 @@ def test_client_verification_turns_handshake_failure_into_recovery(
     root = _repository(tmp_path)
     connect_client(root, "antigravity", python_executable=Path(sys.executable))
 
-    async def fail_probe(*_args: object) -> dict[str, object]:
+    async def fail_probe(*_args: object, **_kwargs: object) -> dict[str, object]:
         raise RuntimeError("server unavailable")
 
     monkeypatch.setattr("threadline.client_verification._probe_server", fail_probe)
